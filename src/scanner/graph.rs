@@ -1,2 +1,2 @@
-// Re-export from types
-pub use crate::types::LinkGraph;
+// Link graph utilities
+// LinkGraph is defined in types/mod.rs

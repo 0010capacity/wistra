@@ -3,10 +3,10 @@ pub mod graph;
 pub mod report;
 pub mod meta;
 
-pub use report::ScanReport;
+pub use report::{ScanReport, DisambigCandidate};
 
 use crate::config::WikiConfig;
-use crate::types::{Document, Link, LinkGraph, WikiIndex};
+use crate::types::{Document, LinkGraph, WikiIndex};
 use anyhow::Result;
 use walkdir::WalkDir;
 use std::collections::HashMap;

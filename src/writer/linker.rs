@@ -1,6 +1,6 @@
 use crate::scanner::parser;
 use crate::types::Status;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;

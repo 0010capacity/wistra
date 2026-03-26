@@ -62,14 +62,18 @@ impl DocumentWriter {
             }
         }
 
-        // Write all documents
+        // Write all documents, rolling back on failure
         for doc in docs {
-            Self::write(doc, dir)?;
+            if let Err(e) = Self::write(doc, dir) {
+                // Restore backups on failure
+                for (path, original_content) in &backups {
+                    if let Err(restore_err) = std::fs::write(path, original_content) {
+                        eprintln!("Failed to restore backup {}: {}", path.display(), restore_err);
+                    }
+                }
+                return Err(e);
+            }
         }
-
-        // On success, clear backups (files have been overwritten)
-        // On failure, restore from backups
-        // For now, we just return success
 
         Ok(())
     }

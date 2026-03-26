@@ -26,7 +26,7 @@ pub enum PlanAction {
 }
 
 /// Create an execution plan from a scan report
-pub fn create_plan(report: &ScanReport, config: &GlobalConfig, slot_count: usize) -> Result<ExecutionPlan> {
+pub fn create_plan(report: &ScanReport, _config: &GlobalConfig, slot_count: usize) -> Result<ExecutionPlan> {
     let mut slots = Vec::new();
 
     // Priority 1: Disambiguation resolution (always first)

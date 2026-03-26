@@ -3,7 +3,7 @@ mod types;
 pub use types::*;
 
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const GLOBAL_CONFIG_DIR: &str = ".wistra";
 const GLOBAL_CONFIG_FILE: &str = "config.toml";

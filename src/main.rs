@@ -7,6 +7,7 @@ mod types;
 mod writer;
 
 use crate::adapter::WikiAdapter;
+use crate::scanner::DisambigCandidate;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
@@ -214,7 +215,8 @@ async fn run_wiki_growth(
 
     // Process each slot
     let mut generated_docs: Vec<types::Document> = Vec::new();
-    for (i, slot) in plan.slots.iter().enumerate() {
+    let mut link_updates: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (_i, slot) in plan.slots.iter().enumerate() {
         if let Some(ref pb) = pb {
             pb.set_message(format!("{}", slot.target));
         }
@@ -239,13 +241,55 @@ async fn run_wiki_growth(
                 }
             }
             planner::PlanAction::Disambiguation => {
-                // TODO: Implement disambiguation resolution
-                if !quiet {
-                    eprintln!("⚠️  Disambiguation for {} requires manual setup", slot.target);
+                // Find the disambig candidate
+                if let Some(candidate) = report.disambig_candidates.iter().find(|c| c.title == slot.target) {
+                    let (context_a, context_b) = build_disambig_contexts(&report, &candidate);
+
+                    let ctx = adapter::DisambigContext {
+                        title: slot.target.clone(),
+                        context_a,
+                        context_b,
+                        wiki_index: report.wiki_index.clone(),
+                        language: global_config.language.clone(),
+                    };
+
+                    match adapter.resolve_disambiguation(ctx).await {
+                        Ok(result) => {
+                            // Add link updates
+                            for update in &result.link_updates {
+                                link_updates.insert(update.from.clone(), update.to.clone());
+                            }
+
+                            // Create disambiguation document
+                            if let Ok(disambig_doc) = parse_disambig_doc(&result.disambig, &global_config.language) {
+                                generated_docs.push(disambig_doc);
+                            }
+
+                            // Create concept A document
+                            if let Ok(doc_a) = parse_disambig_doc(&result.concept_a, &global_config.language) {
+                                generated_docs.push(doc_a);
+                            }
+
+                            // Create concept B document
+                            if let Ok(doc_b) = parse_disambig_doc(&result.concept_b, &global_config.language) {
+                                generated_docs.push(doc_b);
+                            }
+
+                            if !quiet {
+                                println!("✅ {} disambiguation resolved", slot.target);
+                            }
+                        }
+                        Err(e) => {
+                            if !quiet {
+                                eprintln!("❌ Disambiguation failed for {}: {}", slot.target, e);
+                            }
+                        }
+                    }
                 }
             }
             planner::PlanAction::Random => {
-                // TODO: Implement interest-based random selection
+                // Interest-based random selection not yet implemented via AI
+                // Fall back to skipping
             }
         }
 
@@ -265,6 +309,17 @@ async fn run_wiki_growth(
         }
 
         writer::DocumentWriter::write_batch(&generated_docs, &wiki_config.concepts_dir())?;
+
+        // Apply link rewrites from disambiguation if any
+        if !link_updates.is_empty() {
+            if !quiet {
+                println!("\n🔗 Updating links...");
+            }
+            let updated_count = writer::Linker::rewrite_links(&wiki_path, &link_updates)?;
+            if !quiet {
+                println!("   {} files updated", updated_count);
+            }
+        }
 
         // Re-scan to get updated report
         let final_report = scanner::scan_wiki(&wiki_config)?;
@@ -287,10 +342,112 @@ async fn run_wiki_growth(
     Ok(())
 }
 
-fn count_link_updates(report: &scanner::ScanReport) -> Vec<String> {
+fn count_link_updates(_report: &scanner::ScanReport) -> Vec<String> {
     // Return files that would need link updates
     // For now, return empty (will be populated when disambiguation is implemented)
     Vec::new()
+}
+
+fn build_disambig_contexts(
+    report: &scanner::ScanReport,
+    candidate: &DisambigCandidate,
+) -> (Vec<String>, Vec<String>) {
+    // Build context from linking documents for each occurrence
+    let mut context_a: Vec<String> = Vec::new();
+    let mut context_b: Vec<String> = Vec::new();
+
+    // Group incoming links by source document
+    for filename in &candidate.documents {
+        if let Some(links) = report.link_graph.outgoing_links.get(filename) {
+            for link in links {
+                if link.target == candidate.title {
+                    let ctx = format!("From [[{}]]: [[{}]]", filename.replace(".md", ""), candidate.title);
+                    if context_a.is_empty() {
+                        context_a.push(ctx);
+                    } else {
+                        context_b.push(ctx);
+                    }
+                }
+            }
+        }
+    }
+
+    (context_a, context_b)
+}
+
+fn parse_disambig_doc(
+    concept: &adapter::DisambigConcept,
+    language: &str,
+) -> anyhow::Result<types::Document> {
+    use crate::types::Status;
+
+    // Parse the frontmatter from the string
+    let frontmatter_lines: Vec<&str> = concept.frontmatter.lines().collect();
+    let mut fields: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    for line in frontmatter_lines {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(colon_pos) = line.find(':') {
+            let key = line[..colon_pos].trim().to_string();
+            let value = line[colon_pos + 1..].trim().to_string();
+            fields.insert(key, value);
+        }
+    }
+
+    let title = fields.get("title")
+        .cloned()
+        .unwrap_or_else(|| concept.new_title.clone());
+
+    let aliases = fields.get("aliases")
+        .map(|s| parse_yaml_list(s))
+        .unwrap_or_default();
+
+    let tags = fields.get("tags")
+        .map(|s| parse_yaml_list(s))
+        .unwrap_or_default();
+
+    let created = fields.get("created")
+        .and_then(|s| chrono::NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok())
+        .unwrap_or_else(|| chrono::Local::now().naive_local().date());
+
+    let status = fields.get("status")
+        .map(|s| s.trim().to_lowercase())
+        .and_then(|s| match s.as_str() {
+            "published" => Some(Status::Published),
+            "stub" => Some(Status::Stub),
+            "disambiguation" => Some(Status::Disambiguation),
+            "meta" => Some(Status::Meta),
+            _ => None,
+        })
+        .unwrap_or(Status::Published);
+
+    Ok(types::Document {
+        title,
+        aliases,
+        tags,
+        status,
+        language: language.to_string(),
+        created,
+        relates: None,
+        disambig: None,
+        body: concept.body.clone(),
+    })
+}
+
+fn parse_yaml_list(s: &str) -> Vec<String> {
+    let s = s.trim();
+    if !s.starts_with('[') || !s.ends_with(']') {
+        return Vec::new();
+    }
+    let content = &s[1..s.len()-1];
+    content
+        .split(',')
+        .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 fn find_related_docs(report: &scanner::ScanReport, target: &str) -> Vec<String> {
