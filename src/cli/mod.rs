@@ -262,7 +262,7 @@ pub enum Commands {
         path: String,
 
         /// Port to listen on
-        #[arg(short, long, default_value = "3456")]
+        #[arg(short, long, default_value = "15432")]
         port: u16,
 
         /// Host address to bind
