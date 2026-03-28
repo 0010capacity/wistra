@@ -33,6 +33,8 @@ impl ClaudeAdapter {
                 .arg("text")
                 .arg("--add-dir")
                 .arg(wiki_dir)
+                .arg("--permission-mode")
+                .arg("acceptEdits")
                 .output()
         )
         .await
@@ -110,7 +112,7 @@ impl WikiAdapter for ClaudeAdapter {
             .context("Failed to serialize wiki index")?;
 
         let prompt = format!(
-            r#"Write a wiki document for concept '{}' and save it to: {}
+            r#"Write a wiki document for concept "{}" and save it to: {}
 
 [Wiki Context]
 Language: {}
@@ -121,13 +123,29 @@ Wiki index (title, tags, summary):
 
 [Writing Instructions]
 1. Create a Markdown file at the path above with YAML frontmatter
-2. Required frontmatter: title (English), aliases, tags, status (published), language, created
-3. Body: {} language, 300–800 words
+2. Required frontmatter:
+   - title: English name
+   - aliases: List of alternative names (at least 2-3, include non-English names if relevant)
+   - tags: List of hierarchical tags using slash notation (e.g., philosophy/epistemology, science/methodology) - at least 3-5 tags
+   - status: published
+   - language: {}
+   - created: YYYY-MM-DD
+3. Body: 300–800 words in the specified language
 4. Use [[wikilinks]] to link to related docs: {}
 5. Use LaTeX for math ($inline$, $$block$$), fenced code blocks, blockquotes for citations
 6. Use Obsidian callout syntax for notes: > [!note]
 7. Search the web for relevant information to make the article accurate and comprehensive
 8. Do NOT wrap output in code fences. Write raw Markdown only.
+
+Example frontmatter:
+---
+title: "Concept Name"
+aliases: [alternative-name, Another Name, foreign-name]
+tags: [category/subcategory, related-field, discipline]
+status: published
+language: ko
+created: "today's date"
+---
 
 After writing the file, output "OK" only.
 "#,
@@ -407,19 +425,20 @@ fn parse_disambig_response(content: &str, concepts_dir: &Path) -> Result<Disambi
 fn parse_suggestion_response(content: &str) -> Result<SuggestedConcept> {
     let content = content.trim();
 
-    // Remove markdown code fences if present
-    let content = content
-        .strip_prefix("```json")
-        .unwrap_or(content)
-        .strip_prefix("```")
-        .unwrap_or(content);
-    let content = content
-        .strip_suffix("```")
-        .unwrap_or(content)
-        .trim();
+    // Remove markdown code fences if present (handle both ```json and ```)
+    let content = if content.starts_with("```json") {
+        content.strip_prefix("```json").unwrap_or(content)
+    } else if content.starts_with("```") {
+        content.strip_prefix("```").unwrap_or(content)
+    } else {
+        content
+    };
+
+    // Remove trailing code fence
+    let content = content.strip_suffix("```").unwrap_or(content).trim();
 
     let json: serde_json::Value = serde_json::from_str(content)
-        .context("Failed to parse suggestion JSON response")?;
+        .with_context(|| format!("Failed to parse suggestion JSON response. Got: {}", content))?;
 
     let related_existing = json["related_existing"]
         .as_array()
