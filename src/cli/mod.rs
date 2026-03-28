@@ -268,6 +268,21 @@ pub enum Commands {
         #[arg(short, long)]
         open: bool,
     },
+
+    /// Detect duplicate or similar documents
+    Dedup {
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Similarity threshold for fuzzy matching (0.0-1.0)
+        #[arg(long, default_value = "0.8")]
+        threshold: f64,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

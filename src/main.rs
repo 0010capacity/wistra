@@ -97,6 +97,9 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Serve { path, port, host, open }) => {
             serve::serve(&path, &host, port, open).await?;
         }
+        Some(cli::Commands::Dedup { path, threshold, json }) => {
+            run_dedup(&path, threshold, json)?;
+        }
     }
 
     Ok(())
@@ -1459,4 +1462,151 @@ fn update_state(
     std::fs::write(wiki_config.state_path(), json)?;
 
     Ok(())
+}
+
+/// Run the dedup command - detect duplicate or similar documents
+fn run_dedup(path: &str, threshold: f64, json: bool) -> Result<()> {
+    use std::collections::HashMap;
+    use strsim::normalized_levenshtein;
+
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    // Collect non-meta documents
+    let docs: Vec<&types::Document> = report.documents
+        .values()
+        .filter(|doc| doc.status != types::Status::Meta)
+        .collect();
+
+    // 1. Detect similar titles (fuzzy match)
+    let mut similar_titles: Vec<(String, String, f64)> = Vec::new();
+    for i in 0..docs.len() {
+        for j in (i + 1)..docs.len() {
+            let title_a = normalize_for_comparison(&docs[i].title);
+            let title_b = normalize_for_comparison(&docs[j].title);
+
+            // Skip if titles are identical (exact duplicates)
+            if title_a == title_b {
+                continue;
+            }
+
+            let score = normalized_levenshtein(&title_a, &title_b);
+            if score >= threshold {
+                similar_titles.push((
+                    docs[i].title.clone(),
+                    docs[j].title.clone(),
+                    score,
+                ));
+            }
+        }
+    }
+
+    // Sort by similarity score (highest first)
+    similar_titles.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 2. Detect documents with duplicate aliases
+    let mut alias_map: HashMap<String, Vec<String>> = HashMap::new();
+    for doc in &docs {
+        for alias in &doc.aliases {
+            let alias_lower = alias.to_lowercase();
+            alias_map.entry(alias_lower)
+                .or_insert_with(Vec::new)
+                .push(doc.title.clone());
+        }
+    }
+    let duplicate_aliases: Vec<(String, Vec<String>)> = alias_map
+        .into_iter()
+        .filter(|(_, titles)| titles.len() > 1)
+        .collect();
+
+    // 3. Report orphaned stubs that reference same concept
+    let stub_groups: HashMap<String, Vec<String>> = report.stub_candidates
+        .iter()
+        .map(|stub| {
+            let target_lower = stub.target.to_lowercase();
+            (target_lower, vec![stub.target.clone()])
+        })
+        .fold(HashMap::new(), |mut acc, (key, val)| {
+            acc.entry(key).or_insert_with(Vec::new).extend(val);
+            acc
+        });
+
+    let orphaned_stubs: Vec<(String, usize)> = stub_groups
+        .into_iter()
+        .map(|(key, targets)| (key, targets.len()))
+        .collect();
+
+    // Output results
+    if json {
+        let output = serde_json::json!({
+            "similar_titles": similar_titles.iter().map(|(a, b, score)| serde_json::json!({
+                "title_a": a,
+                "title_b": b,
+                "similarity": score
+            })).collect::<Vec<_>>(),
+            "duplicate_aliases": duplicate_aliases.iter().map(|(alias, titles)| serde_json::json!({
+                "alias": alias,
+                "documents": titles
+            })).collect::<Vec<_>>(),
+            "orphaned_stubs": orphaned_stubs.iter().map(|(target, count)| serde_json::json!({
+                "target": target,
+                "stub_count": count
+            })).collect::<Vec<_>>(),
+            "summary": {
+                "similar_titles_count": similar_titles.len(),
+                "duplicate_aliases_count": duplicate_aliases.len(),
+                "orphaned_stubs_count": orphaned_stubs.len()
+            }
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("🔍 Duplicate Detection Report");
+        println!();
+
+        // Similar titles
+        if similar_titles.is_empty() {
+            println!("✅ Similar titles: none");
+        } else {
+            println!("⚠️  Similar titles (fuzzy match ≥ {:.0}%):", threshold * 100.0);
+            for (a, b, score) in &similar_titles {
+                println!("   [[{}]] ↔ [[{}]] ({:.0}%)", a, b, score * 100.0);
+            }
+        }
+        println!();
+
+        // Duplicate aliases
+        if duplicate_aliases.is_empty() {
+            println!("✅ Duplicate aliases: none");
+        } else {
+            println!("⚠️  Duplicate aliases:");
+            for (alias, titles) in &duplicate_aliases {
+                println!("   \"{}\" used by: {}", alias, titles.iter().map(|t| format!("[[{}]]", t)).collect::<Vec<_>>().join(", "));
+            }
+        }
+        println!();
+
+        // Orphaned stubs
+        if orphaned_stubs.is_empty() {
+            println!("✅ Orphaned stubs: none");
+        } else {
+            println!("⚠️  Orphaned stubs (unresolved links):");
+            for (target, count) in &orphaned_stubs {
+                println!("   [[{}]] ({} references)", target, count);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Normalize a string for comparison (lowercase, alphanumeric only)
+fn normalize_for_comparison(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
