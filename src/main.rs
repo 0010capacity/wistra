@@ -1,8 +1,10 @@
 mod adapter;
 mod cli;
 mod config;
+mod importer;
 mod planner;
 mod scanner;
+mod serve;
 mod types;
 mod writer;
 
@@ -86,8 +88,22 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Stats { stat_type, path, json }) => {
             run_stats(&path, &stat_type, json)?;
         }
+        Some(cli::Commands::Import { source, path, dry_run, json }) => {
+            run_import(&source, &path, dry_run, json)?;
+        }
+        Some(cli::Commands::Serve { path, port, host, open }) => {
+            serve::serve(&path, &host, port, open).await?;
+        }
     }
 
+    Ok(())
+}
+
+fn run_import(source: &str, path: &str, dry_run: bool, json: bool) -> Result<()> {
+    let source_path = std::path::PathBuf::from(source);
+    let wiki_path = PathBuf::from(shellexpand::tilde(path).to_string());
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    importer::import_path(&source_path, &wiki_config, dry_run, json)?;
     Ok(())
 }
 
