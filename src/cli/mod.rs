@@ -161,4 +161,127 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Tag management commands
+    Tags {
+        #[command(subcommand)]
+        action: TagAction,
+
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+    },
+
+    /// Show document connection graph
+    Graph {
+        /// Starting document title
+        title: String,
+
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Maximum depth to traverse
+        #[arg(long, default_value = "2")]
+        depth: usize,
+
+        /// Show incoming links only
+        #[arg(long)]
+        incoming: bool,
+
+        /// Show outgoing links only
+        #[arg(long)]
+        outgoing: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Extended statistics
+    Stats {
+        /// Statistics to show
+        #[arg(default_value = "basic")]
+        stat_type: String,
+
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Import external markdown files into the wiki
+    Import {
+        /// Path to file or directory to import
+        source: String,
+
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Dry run - preview without writing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Start HTTP server to browse wiki
+    Serve {
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Port to listen on
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+
+        /// Host address to bind
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Open browser automatically
+        #[arg(short, long)]
+        open: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TagAction {
+    /// List all tags with document counts
+    List,
+
+    /// Rename a tag across all documents
+    Rename {
+        /// Old tag name
+        old_tag: String,
+
+        /// New tag name
+        new_tag: String,
+
+        /// Dry run - preview without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Merge source tag into target tag
+    Merge {
+        /// Source tag (will be merged into target)
+        source: String,
+
+        /// Target tag (will be kept)
+        target: String,
+
+        /// Dry run - preview without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Find unused tags (no documents)
+    Orphans,
 }
