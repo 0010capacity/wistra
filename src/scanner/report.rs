@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 /// Scan report containing wiki statistics
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ScanReport {
     /// Total document counts by status
     pub counts: DocumentCounts,

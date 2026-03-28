@@ -26,8 +26,11 @@ pub enum PlanAction {
 }
 
 /// Create an execution plan from a scan report
-pub fn create_plan(report: &ScanReport, _config: &GlobalConfig, slot_count: usize) -> Result<ExecutionPlan> {
+pub fn create_plan(report: &ScanReport, config: &GlobalConfig, slot_count: usize) -> Result<ExecutionPlan> {
     let mut slots = Vec::new();
+
+    // Calculate slot allocation using priority module
+    let allocation = priority::calculate_slot_allocation(report, config, slot_count);
 
     // Priority 1: Disambiguation resolution (always first)
     for candidate in &report.disambig_candidates {
@@ -38,9 +41,9 @@ pub fn create_plan(report: &ScanReport, _config: &GlobalConfig, slot_count: usiz
         });
     }
 
-    // Priority 2: Stub fill (sorted by inbound link count)
-    let remaining = slot_count.saturating_sub(slots.len());
-    for candidate in report.stub_candidates.iter().take(remaining) {
+    // Priority 2: Stub fill (sorted by inbound link count using priority module)
+    let sorted_stubs = priority::sort_stub_candidates(report);
+    for candidate in sorted_stubs.iter().take(allocation.stub_count) {
         slots.push(PlanSlot {
             action: PlanAction::Stub,
             target: candidate.target.clone(),
@@ -48,8 +51,14 @@ pub fn create_plan(report: &ScanReport, _config: &GlobalConfig, slot_count: usiz
         });
     }
 
-    // Priority 3: Interest-based random (not implemented yet)
-    // Would need AI to suggest concepts
+    // Priority 3: Interest-based random (fills remaining slots)
+    for i in 0..allocation.random_count {
+        slots.push(PlanSlot {
+            action: PlanAction::Random,
+            target: format!("random-suggestion-{}", i + 1),
+            details: "AI-suggested based on interests".to_string(),
+        });
+    }
 
     Ok(ExecutionPlan { slots })
 }

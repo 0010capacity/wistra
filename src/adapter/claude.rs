@@ -1,4 +1,4 @@
-use crate::adapter::{DisambigContext, DisambigResult, GenerationContext, WikiAdapter};
+use crate::adapter::{DisambigContext, DisambigResult, GenerationContext, SuggestedConcept, SuggestionContext, WikiAdapter};
 use crate::types::{Document, Status};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -137,6 +137,50 @@ Instructions:
         // Parse JSON response
         parse_disambig_response(&response)
     }
+
+    async fn suggest_concept(&self, ctx: SuggestionContext) -> Result<SuggestedConcept> {
+        let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
+            .context("Failed to serialize wiki index")?;
+
+        let existing_titles: Vec<&str> = ctx.wiki_index.entries.iter()
+            .map(|e| e.title.as_str())
+            .collect();
+
+        let prompt = format!(
+            r#"You are a knowledge graph curator. Suggest a new concept to add to a personal wiki.
+
+[Wiki Context]
+Language: {}
+User interests: {}
+Tag hierarchy: {}
+Existing concepts: {}
+Wiki index (title, tags, summary):
+{}
+
+[Task]
+Suggest ONE new concept that:
+1. Relates to the user's interests
+2. Connects to multiple existing documents via [[wikilinks]]
+3. Is NOT already in the existing concepts list
+4. Would naturally extend the knowledge graph
+
+Return JSON only, no other text:
+{{
+  "title": "Concept Name",
+  "reason": "Brief explanation why this concept fits",
+  "related_existing": ["Existing Doc 1", "Existing Doc 2"]
+}}
+"#,
+            ctx.language,
+            ctx.interests.join(", "),
+            ctx.tag_index,
+            existing_titles.join(", "),
+            wiki_index_json
+        );
+
+        let response = self.call_api(&prompt).await?;
+        parse_suggestion_response(&response)
+    }
 }
 
 fn parse_generated_document(content: &str, language: &str) -> Result<Document> {
@@ -259,7 +303,7 @@ fn parse_disambig_response(content: &str) -> Result<DisambigResult> {
         .iter()
         .map(|v| {
             Ok(crate::adapter::LinkUpdate {
-                file: v["file"].as_str().context("Missing file field")?.to_string(),
+                source_file: v["file"].as_str().context("Missing file field")?.to_string(),
                 from: v["from"].as_str().context("Missing from field")?.to_string(),
                 to: v["to"].as_str().context("Missing to field")?.to_string(),
             })
@@ -279,5 +323,38 @@ fn parse_disambig_concept(json: &serde_json::Value) -> Result<crate::adapter::Di
         new_title: json["new_title"].as_str().context("Missing new_title")?.to_string(),
         frontmatter: json["frontmatter"].as_str().context("Missing frontmatter")?.to_string(),
         body: json["body"].as_str().context("Missing body")?.to_string(),
+    })
+}
+
+fn parse_suggestion_response(content: &str) -> Result<SuggestedConcept> {
+    let content = content.trim();
+
+    // Remove markdown code fences if present
+    let content = content
+        .strip_prefix("```json")
+        .unwrap_or(content)
+        .strip_prefix("```")
+        .unwrap_or(content);
+    let content = content
+        .strip_suffix("```")
+        .unwrap_or(content)
+        .trim();
+
+    let json: serde_json::Value = serde_json::from_str(content)
+        .context("Failed to parse suggestion JSON response")?;
+
+    let related_existing = json["related_existing"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(SuggestedConcept {
+        title: json["title"].as_str().context("Missing title")?.to_string(),
+        reason: json["reason"].as_str().unwrap_or("").to_string(),
+        related_existing,
     })
 }

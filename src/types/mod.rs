@@ -40,6 +40,7 @@ pub struct Document {
 
 impl Document {
     /// Create a new stub document
+    #[allow(dead_code)]
     pub fn new_stub(title: String, language: String) -> Self {
         Document {
             title: title.clone(),
@@ -62,6 +63,7 @@ impl Document {
 
 /// Represents a wikilink found in document body
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Link {
     /// The raw link target (e.g., "Apple" from [[Apple]])
     pub target: String,
@@ -109,6 +111,7 @@ impl Link {
     }
 
     /// Reconstruct the link as wikilink syntax
+    #[allow(dead_code)]
     pub fn to_wikilink(&self) -> String {
         let mut result = format!("[[{}", self.target);
         if let Some(ref section) = self.section {
@@ -144,6 +147,7 @@ impl WikiIndex {
     }
 
     /// Find entry by title or alias
+    #[allow(dead_code)]
     pub fn find(&self, title: &str) -> Option<&WikiIndexEntry> {
         self.entries.iter().find(|e| {
             e.title.eq_ignore_ascii_case(title)
@@ -191,6 +195,7 @@ impl LinkGraph {
     }
 
     /// Get inbound link count for a target
+    #[allow(dead_code)]
     pub fn inbound_count(&self, target: &str) -> usize {
         self.incoming_links
             .get(target)

@@ -3,6 +3,7 @@ use crate::scanner::ScanReport;
 use anyhow::Result;
 
 /// Calculate how many slots to allocate to each priority level
+#[allow(dead_code)]
 pub fn calculate_slot_allocation(
     report: &ScanReport,
     _config: &GlobalConfig,
@@ -22,6 +23,7 @@ pub fn calculate_slot_allocation(
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SlotAllocation {
     pub disambig_count: usize,
     pub stub_count: usize,
@@ -29,6 +31,7 @@ pub struct SlotAllocation {
 }
 
 /// Sort stub candidates by inbound link count (descending)
+#[allow(dead_code)]
 pub fn sort_stub_candidates(report: &ScanReport) -> Vec<StubCandidateWithCount> {
     let mut candidates: Vec<StubCandidateWithCount> = report
         .stub_candidates
@@ -44,12 +47,14 @@ pub fn sort_stub_candidates(report: &ScanReport) -> Vec<StubCandidateWithCount> 
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StubCandidateWithCount {
     pub target: String,
     pub inbound_count: usize,
 }
 
 /// Select random concepts based on user interests
+#[allow(dead_code)]
 pub fn select_random_concepts(
     report: &ScanReport,
     config: &GlobalConfig,
@@ -94,6 +99,7 @@ pub fn select_random_concepts(
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RandomConcept {
     pub title: String,
     pub matched_interests: Vec<String>,

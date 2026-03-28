@@ -4,6 +4,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 /// Build a weighted random selection of concepts based on user interests
+#[allow(dead_code)]
 pub fn weighted_random_select(
     wiki_index: &WikiIndex,
     config: &GlobalConfig,
@@ -52,6 +53,7 @@ pub fn weighted_random_select(
 }
 
 /// Calculate weight based on how many interest domains match
+#[allow(dead_code)]
 fn calculate_interest_weight(tags: &[String], interests: &[String]) -> f64 {
     let matches: usize = tags
         .iter()
@@ -73,6 +75,7 @@ fn calculate_interest_weight(tags: &[String], interests: &[String]) -> f64 {
 }
 
 /// Choose a random item based on weights
+#[allow(dead_code)]
 fn weighted_choice<'a, R: rand::Rng>(
     items: &mut Vec<(&'a str, f64)>,
     rng: &mut R,
@@ -103,6 +106,7 @@ fn weighted_choice<'a, R: rand::Rng>(
 }
 
 /// Suggest a new concept that extends the knowledge graph
+#[allow(dead_code)]
 pub fn suggest_concept(
     wiki_index: &WikiIndex,
     config: &GlobalConfig,

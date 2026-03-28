@@ -16,12 +16,30 @@ pub struct GenerationContext {
 
 /// Context for disambiguation resolution
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DisambigContext {
     pub title: String,
     pub context_a: Vec<String>,
     pub context_b: Vec<String>,
     pub wiki_index: WikiIndex,
     pub language: String,
+}
+
+/// Context for concept suggestion
+#[derive(Debug, Clone)]
+pub struct SuggestionContext {
+    pub wiki_index: WikiIndex,
+    pub interests: Vec<String>,
+    pub language: String,
+    pub tag_index: String,
+}
+
+/// Result of concept suggestion
+#[derive(Debug, Clone)]
+pub struct SuggestedConcept {
+    pub title: String,
+    pub reason: String,
+    pub related_existing: Vec<String>,
 }
 
 /// Result of disambiguation resolution
@@ -41,8 +59,9 @@ pub struct DisambigConcept {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LinkUpdate {
-    pub file: String,
+    pub source_file: String,
     pub from: String,
     pub to: String,
 }
@@ -55,4 +74,7 @@ pub trait WikiAdapter: Send + Sync {
 
     /// Resolve a disambiguation
     async fn resolve_disambiguation(&self, ctx: DisambigContext) -> Result<DisambigResult>;
+
+    /// Suggest a new concept based on interests and existing wiki
+    async fn suggest_concept(&self, ctx: SuggestionContext) -> Result<SuggestedConcept>;
 }
