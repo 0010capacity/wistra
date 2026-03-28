@@ -58,8 +58,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Status { path }) => {
             run_status(&path)?;
         }
-        Some(cli::Commands::Run { path, count, dry_run, quiet, no_confirm }) => {
-            run_wiki_growth(&path, count, dry_run, quiet, no_confirm).await?;
+        Some(cli::Commands::Run { path, count, dry_run, quiet, no_confirm, no_git }) => {
+            run_wiki_growth(&path, count, dry_run, quiet, no_confirm, !no_git).await?;
         }
         Some(cli::Commands::Rename { old_title, new_title, path, dry_run }) => {
             run_rename(&path, &old_title, &new_title, dry_run)?;
@@ -100,8 +100,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;
         }
-        Some(cli::Commands::Cron { set, show, remove, install }) => {
-            run_cron(set.as_deref(), show, remove, install)?;
+        Some(cli::Commands::Cron { set, show, remove, install, git }) => {
+            run_cron(set.as_deref(), show, remove, install, git)?;
         }
     }
 
@@ -1040,10 +1040,11 @@ fn run_clean(path: &str, dry_run: bool, fix: bool, json: bool) -> Result<()> {
 
 async fn run_wiki_growth(
     path: &str,
-    count: usize,
+    count: Option<usize>,
     dry_run: bool,
     quiet: bool,
     no_confirm: bool,
+    git: bool,
 ) -> Result<()> {
     use dialoguer::Confirm;
     use indicatif::{ProgressBar, ProgressStyle};
@@ -1051,6 +1052,9 @@ async fn run_wiki_growth(
     // Load config
     let global_config = config::GlobalConfig::load()?
         .context("No config found. Run `wistra onboard` first.")?;
+
+    // Use provided count or fall back to config's daily_count
+    let count = count.unwrap_or(global_config.daily_count);
 
     // Resolve wiki path
     let wiki_path = if path == "." {
@@ -1301,6 +1305,11 @@ async fn run_wiki_growth(
         // No documents generated but plan was shown - just regenerate meta files
         let final_report = scanner::scan_wiki(&wiki_config)?;
         scanner::meta::generate_meta_files(&wiki_config, &final_report)?;
+    }
+
+    // Git commit and push if requested
+    if git {
+        git_commit_and_push(&wiki_path, &generated_docs, quiet)?;
     }
 
     Ok(())
@@ -1621,7 +1630,7 @@ fn normalize_for_comparison(s: &str) -> String {
 }
 
 /// Run the cron command - manage cron jobs
-fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool) -> Result<()> {
+fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, git: bool) -> Result<()> {
     // Default: show help if no options
     if set.is_none() && !show && !remove && !install {
         println!("wistra cron - Manage scheduled runs");
@@ -1629,6 +1638,7 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool) -> Resul
         println!("Usage:");
         println!("  wistra cron --set 14:30     Set cron time (shows crontab line)");
         println!("  wistra cron --set 14:30 --install  Auto-install to crontab");
+        println!("  wistra cron --set 14:30 --git      Include git commit/push");
         println!("  wistra cron --show          Show current crontab line");
         println!("  wistra cron --remove        Remove wistra from crontab");
         return Ok(());
@@ -1639,9 +1649,9 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool) -> Resul
         let (hour, minute) = cli::cron::parse_time(time)?;
 
         if install {
-            cli::cron::install_cron(hour, minute)?;
+            cli::cron::install_cron(hour, minute, git)?;
         } else {
-            cli::cron::show_cron(hour, minute);
+            cli::cron::show_cron(hour, minute, git);
         }
         return Ok(());
     }
@@ -1672,6 +1682,96 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool) -> Resul
     // Handle --remove
     if remove {
         cli::cron::remove_cron()?;
+    }
+
+    Ok(())
+}
+
+/// Commit and push changes to git
+fn git_commit_and_push(wiki_path: &PathBuf, generated_docs: &[types::Document], quiet: bool) -> Result<()> {
+    use std::process::Command;
+
+    // Check if there are changes to commit
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(wiki_path)
+        .output()
+        .context("Failed to run git status")?;
+
+    let status_str = String::from_utf8_lossy(&status_output.stdout);
+    if status_str.trim().is_empty() {
+        if !quiet {
+            println!("📭 No changes to commit.");
+        }
+        return Ok(());
+    }
+
+    // Stage all changes
+    let add_status = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(wiki_path)
+        .status()
+        .context("Failed to run git add")?;
+
+    if !add_status.success() {
+        anyhow::bail!("git add failed");
+    }
+
+    // Build commit message
+    let commit_msg = if generated_docs.is_empty() {
+        "chore: update wiki meta files".to_string()
+    } else {
+        let titles: Vec<&str> = generated_docs.iter().map(|d| d.title.as_str()).take(5).collect();
+        if generated_docs.len() <= 5 {
+            format!("docs: add {} - {}", generated_docs.len(), titles.join(", "))
+        } else {
+            format!("docs: add {} documents including {}", generated_docs.len(), titles.join(", "))
+        }
+    };
+
+    // Commit
+    let commit_status = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .current_dir(wiki_path)
+        .status()
+        .context("Failed to run git commit")?;
+
+    if !commit_status.success() {
+        anyhow::bail!("git commit failed");
+    }
+
+    if !quiet {
+        println!("📤 Committed: {}", commit_msg);
+    }
+
+    // Check if remote exists
+    let remote_output = Command::new("git")
+        .args(["remote"])
+        .current_dir(wiki_path)
+        .output()
+        .context("Failed to check git remote")?;
+
+    let remote_str = String::from_utf8_lossy(&remote_output.stdout);
+    if remote_str.trim().is_empty() {
+        if !quiet {
+            println!("   No remote configured, skipping push.");
+        }
+        return Ok(());
+    }
+
+    // Push
+    let push_status = Command::new("git")
+        .args(["push"])
+        .current_dir(wiki_path)
+        .status()
+        .context("Failed to run git push")?;
+
+    if !push_status.success() {
+        anyhow::bail!("git push failed");
+    }
+
+    if !quiet {
+        println!("✅ Pushed to remote.");
     }
 
     Ok(())

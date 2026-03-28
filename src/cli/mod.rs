@@ -15,9 +15,9 @@ pub enum Commands {
         #[arg(default_value = ".")]
         path: String,
 
-        /// Number of concepts to generate
-        #[arg(short, long, default_value = "5")]
-        count: usize,
+        /// Number of concepts to generate (default: from config)
+        #[arg(short, long)]
+        count: Option<usize>,
 
         /// Dry run - preview without writing
         #[arg(long)]
@@ -30,6 +30,10 @@ pub enum Commands {
         /// Skip confirmation prompts
         #[arg(long)]
         no_confirm: bool,
+
+        /// Skip git commit and push after completion
+        #[arg(long)]
+        no_git: bool,
     },
 
     /// Scan wiki and print report
@@ -258,7 +262,7 @@ pub enum Commands {
         path: String,
 
         /// Port to listen on
-        #[arg(short, long, default_value = "8080")]
+        #[arg(short, long, default_value = "3456")]
         port: u16,
 
         /// Host address to bind
@@ -302,6 +306,10 @@ pub enum Commands {
         /// Install cron job automatically
         #[arg(long)]
         install: bool,
+
+        /// Include git commit and push in cron job
+        #[arg(long)]
+        git: bool,
     },
 }
 
