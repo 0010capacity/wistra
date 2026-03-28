@@ -2,8 +2,9 @@ use anyhow::{Context, Result, bail};
 use std::process::Command;
 
 /// Generate cron line for wistra
-pub fn generate_cron_line(hour: u8, minute: u8) -> String {
-    format!("{} {} * * * wistra run --quiet --no-confirm", minute, hour)
+pub fn generate_cron_line(hour: u8, minute: u8, no_git: bool) -> String {
+    let git_flag = if no_git { " --no-git" } else { "" };
+    format!("{} {} * * * wistra run --quiet --no-confirm{}", minute, hour, git_flag)
 }
 
 /// Parse time string (HH:MM format)
@@ -31,14 +32,14 @@ pub fn parse_time(time: &str) -> Result<(u8, u8)> {
 }
 
 /// Show cron line for the given time
-pub fn show_cron(hour: u8, minute: u8) {
+pub fn show_cron(hour: u8, minute: u8, no_git: bool) {
     println!("📝 Add this line to your crontab (crontab -e):");
-    println!("    {}", generate_cron_line(hour, minute));
+    println!("    {}", generate_cron_line(hour, minute, no_git));
 }
 
 /// Install cron job using crontab
-pub fn install_cron(hour: u8, minute: u8) -> Result<()> {
-    let new_line = generate_cron_line(hour, minute);
+pub fn install_cron(hour: u8, minute: u8, no_git: bool) -> Result<()> {
+    let new_line = generate_cron_line(hour, minute, no_git);
 
     // Get current crontab
     let current_crontab = Command::new("crontab")

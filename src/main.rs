@@ -100,8 +100,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;
         }
-        Some(cli::Commands::Cron { set, show, remove, install, git }) => {
-            run_cron(set.as_deref(), show, remove, install, git)?;
+        Some(cli::Commands::Cron { set, show, remove, install, no_git }) => {
+            run_cron(set.as_deref(), show, remove, install, no_git)?;
         }
     }
 
@@ -1630,7 +1630,7 @@ fn normalize_for_comparison(s: &str) -> String {
 }
 
 /// Run the cron command - manage cron jobs
-fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, git: bool) -> Result<()> {
+fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, no_git: bool) -> Result<()> {
     // Default: show help if no options
     if set.is_none() && !show && !remove && !install {
         println!("wistra cron - Manage scheduled runs");
@@ -1638,7 +1638,7 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, git: boo
         println!("Usage:");
         println!("  wistra cron --set 14:30     Set cron time (shows crontab line)");
         println!("  wistra cron --set 14:30 --install  Auto-install to crontab");
-        println!("  wistra cron --set 14:30 --git      Include git commit/push");
+        println!("  wistra cron --set 14:30 --no-git   Skip git commit/push");
         println!("  wistra cron --show          Show current crontab line");
         println!("  wistra cron --remove        Remove wistra from crontab");
         return Ok(());
@@ -1649,9 +1649,9 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, git: boo
         let (hour, minute) = cli::cron::parse_time(time)?;
 
         if install {
-            cli::cron::install_cron(hour, minute, git)?;
+            cli::cron::install_cron(hour, minute, no_git)?;
         } else {
-            cli::cron::show_cron(hour, minute, git);
+            cli::cron::show_cron(hour, minute, no_git);
         }
         return Ok(());
     }

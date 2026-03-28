@@ -307,9 +307,9 @@ pub enum Commands {
         #[arg(long)]
         install: bool,
 
-        /// Include git commit and push in cron job
+        /// Skip git commit/push in cron job
         #[arg(long)]
-        git: bool,
+        no_git: bool,
     },
 }
 

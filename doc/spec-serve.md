@@ -13,7 +13,7 @@ Users want to browse their wistra wiki without Obsidian or external tools.
 **Stack**: Single binary, no external dependencies (use pulldown-cmark markup)
 
 ## Acceptance Criteria
-- [ ] Serve on configurable port (default: 8080)
+- [ ] Serve on configurable port (default: 3456)
 - [ ] Render markdown with syntax highlighting
 - [ ] Resolve wikilinks to HTML pages
 - [ ] Render frontmatter as metadata
