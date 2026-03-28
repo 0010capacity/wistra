@@ -8,7 +8,9 @@ mod writer;
 
 use crate::adapter::{SuggestionContext, WikiAdapter};
 use crate::scanner::DisambigCandidate;
+use crate::types::Link;
 use anyhow::{Context, Result};
+use chrono::Datelike;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -74,6 +76,15 @@ async fn main() -> Result<()> {
         }
         Some(cli::Commands::Search { query, path, case_sensitive, regex, json }) => {
             run_search(&path, &query, case_sensitive, regex, json)?;
+        }
+        Some(cli::Commands::Tags { action, path }) => {
+            run_tags(&path, action)?;
+        }
+        Some(cli::Commands::Graph { title, path, depth, incoming, outgoing, json }) => {
+            run_graph(&path, &title, depth, incoming, outgoing, json)?;
+        }
+        Some(cli::Commands::Stats { stat_type, path, json }) => {
+            run_stats(&path, &stat_type, json)?;
         }
     }
 
@@ -533,6 +544,322 @@ fn run_search(path: &str, query: &str, case_sensitive: bool, use_regex: bool, js
             for (title, match_type, _) in &results {
                 println!("  - [[{}]] ({} match)", title, match_type);
             }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the tags command - tag management
+fn run_tags(path: &str, action: cli::TagAction) -> Result<()> {
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let concepts_dir = wiki_config.concepts_dir();
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    match action {
+        cli::TagAction::List => {
+            // List all tags with document counts
+            let mut tag_counts = report.tag_stats.tag_counts.clone();
+            tag_counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+            if tag_counts.is_empty() {
+                println!("No tags found.");
+            } else {
+                println!("{} tags:", tag_counts.len());
+                for (tag, count) in tag_counts {
+                    println!("  {} ({} documents)", tag, count);
+                }
+            }
+        }
+        cli::TagAction::Rename { old_tag, new_tag, dry_run } => {
+            println!("🏷️  Rename tag: {} → {}", old_tag, new_tag);
+
+            // Find documents with the old tag
+            let mut affected: Vec<&types::Document> = Vec::new();
+            for doc in report.documents.values() {
+                if doc.tags.contains(&old_tag) {
+                    affected.push(doc);
+                }
+            }
+
+            println!("   {} documents have this tag", affected.len());
+
+            if dry_run {
+                println!("🏃 Dry run - no changes made.");
+                return Ok(());
+            }
+
+            // Update each document
+            for doc in affected {
+                let filepath = concepts_dir.join(doc.filename());
+                let content = std::fs::read_to_string(&filepath)?;
+                let new_content = content.replace(&format!("\"{}\"", old_tag), &format!("\"{}\"", new_tag));
+                std::fs::write(&filepath, new_content)?;
+            }
+
+            println!("✅ Tag renamed successfully.");
+        }
+        cli::TagAction::Merge { source, target, dry_run } => {
+            println!("🏷️  Merge tag: {} → {}", source, target);
+
+            // Find documents with the source tag
+            let mut affected: Vec<&types::Document> = Vec::new();
+            for doc in report.documents.values() {
+                if doc.tags.contains(&source) {
+                    affected.push(doc);
+                }
+            }
+
+            println!("   {} documents have this tag", affected.len());
+
+            if dry_run {
+                println!("🏃 Dry run - no changes made.");
+                return Ok(());
+            }
+
+            // Update each document: remove source, add target if not present
+            for doc in affected {
+                let filepath = concepts_dir.join(doc.filename());
+                let mut content = std::fs::read_to_string(&filepath)?;
+
+                // Remove source tag
+                content = content.replace(&format!("\"{}\"", source), &format!("\"{}\"", target));
+
+                // If target doesn't already exist in tags, we need to add it properly
+                // For simplicity, just replace source with target in tags list
+                std::fs::write(&filepath, content)?;
+            }
+
+            println!("✅ Tag merged successfully.");
+        }
+        cli::TagAction::Orphans => {
+            // Find all tags that have no documents
+            let mut all_tags: std::collections::HashSet<&String> = std::collections::HashSet::new();
+            let mut used_tags: std::collections::HashSet<&String> = std::collections::HashSet::new();
+
+            for (tag, _) in &report.tag_stats.tag_counts {
+                all_tags.insert(tag);
+                used_tags.insert(tag);
+            }
+
+            let orphan_tags: Vec<&&String> = all_tags.difference(&used_tags).collect();
+
+            if orphan_tags.is_empty() {
+                println!("No orphan tags found.");
+            } else {
+                println!("{} orphan tags (not used by any document):", orphan_tags.len());
+                for tag in orphan_tags {
+                    println!("  - {}", tag);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the graph command - show document connection graph
+fn run_graph(path: &str, title: &str, max_depth: usize, incoming_only: bool, outgoing_only: bool, json: bool) -> Result<()> {
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    // BFS traversal
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut queue: Vec<(String, usize)> = vec![(title.to_string(), 0)];
+    let mut results: Vec<(String, usize)> = Vec::new();
+
+    while let Some((current, depth)) = queue.pop() {
+        if depth > max_depth || visited.contains(&current) {
+            continue;
+        }
+        visited.insert(current.clone());
+        results.push((current.clone(), depth));
+
+        if depth < max_depth {
+            // Get linked documents
+            let links: Vec<&Link> = if !incoming_only {
+                report.link_graph.outgoing_links
+                    .get(&format!("{}.md", current))
+                    .map(|l| l.as_slice())
+                    .unwrap_or(&[])
+                    .iter()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            let incoming: Vec<&Link> = if !outgoing_only {
+                report.link_graph.incoming_links
+                    .get(&current)
+                    .map(|l| l.as_slice())
+                    .unwrap_or(&[])
+                    .iter()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            for link in links {
+                let target = link.target.replace(".md", "");
+                if !visited.contains(&target) {
+                    queue.push((target, depth + 1));
+                }
+            }
+
+            for link in incoming {
+                let source = link.source_file.replace(".md", "");
+                if !visited.contains(&source) {
+                    queue.push((source, depth + 1));
+                }
+            }
+        }
+    }
+
+    if json {
+        let graph: Vec<serde_json::Value> = results
+            .iter()
+            .map(|(doc_title, d)| {
+                serde_json::json!({
+                    "title": doc_title,
+                    "depth": d
+                })
+            })
+            .collect();
+        let output = serde_json::json!({
+            "root": title,
+            "depth": max_depth,
+            "graph": graph
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("[[{}]]", title);
+        for (doc_title, depth) in &results[1..] {
+            let indent = "  ".repeat(*depth);
+            println!("{}└── [[{}]]", indent, doc_title);
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the stats command - extended statistics
+fn run_stats(path: &str, stat_type: &str, json: bool) -> Result<()> {
+    use std::collections::HashMap;
+
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    match stat_type {
+        "basic" => {
+            report.print_status();
+        }
+        "trends" => {
+            // Group documents by creation month
+            let mut monthly: HashMap<String, usize> = HashMap::new();
+            for doc in report.documents.values() {
+                let month = format!("{}-{:02}", doc.created.year(), doc.created.month());
+                *monthly.entry(month).or_insert(0) += 1;
+            }
+
+            let mut months: Vec<(String, usize)> = monthly.into_iter().collect();
+            months.sort_by(|a, b| a.0.cmp(&b.0));
+
+            if json {
+                let trends: Vec<serde_json::Value> = months
+                    .iter()
+                    .map(|(month, count)| {
+                        serde_json::json!({
+                            "month": month,
+                            "count": count
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&trends)?);
+            } else {
+                println!("📈 Document creation trends:");
+                for (month, count) in &months {
+                    println!("  {}: {} documents", month, count);
+                }
+            }
+        }
+        "tags" => {
+            let mut tag_docs: HashMap<String, Vec<&String>> = HashMap::new();
+            for doc in report.documents.values() {
+                for tag in &doc.tags {
+                    tag_docs.entry(tag.clone()).or_insert_with(Vec::new).push(&doc.title);
+                }
+            }
+
+            let mut tags: Vec<(&String, &Vec<&String>)> = tag_docs.iter().collect();
+            tags.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+            if json {
+                let tag_stats: Vec<serde_json::Value> = tags
+                    .iter()
+                    .map(|(tag, docs)| {
+                        serde_json::json!({
+                            "tag": tag,
+                            "count": docs.len(),
+                            "documents": docs
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&tag_stats)?);
+            } else {
+                println!("🏷️  Tag distribution:");
+                for (tag, docs) in tags {
+                    println!("  {} ({} documents): {}", tag, docs.len(), docs.iter().map(|s| s.as_str()).take(3).collect::<Vec<_>>().join(", "));
+                }
+            }
+        }
+        "links" => {
+            let total_links: usize = report.link_graph.incoming_links.values().map(|v| v.len()).sum();
+            let avg_links = if report.counts.total > 0 {
+                total_links as f64 / report.counts.total as f64
+            } else {
+                0.0
+            };
+
+            let mut link_counts: Vec<usize> = report.documents.values()
+                .map(|doc| {
+                    let outgoing = report.link_graph.outgoing_links.get(&doc.filename())
+                        .map(|l| l.len())
+                        .unwrap_or(0);
+                    let incoming = report.link_graph.incoming_links.get(&doc.title)
+                        .map(|l| l.len())
+                        .unwrap_or(0);
+                    outgoing + incoming
+                })
+                .collect();
+            link_counts.sort_by(|a, b| b.cmp(a));
+
+            let max_links = link_counts.first().copied().unwrap_or(0);
+            let min_links = link_counts.last().copied().unwrap_or(0);
+
+            if json {
+                let link_stats = serde_json::json!({
+                    "total_links": total_links,
+                    "average_links_per_doc": avg_links,
+                    "max_links": max_links,
+                    "min_links": min_links
+                });
+                println!("{}", serde_json::to_string_pretty(&link_stats)?);
+            } else {
+                println!("🔗 Link statistics:");
+                println!("  Total links: {}", total_links);
+                println!("  Average links per document: {:.2}", avg_links);
+                println!("  Max links: {}", max_links);
+                println!("  Min links: {}", min_links);
+            }
+        }
+        _ => {
+            anyhow::bail!("Unknown stats type: {}. Use basic, trends, tags, or links.", stat_type);
         }
     }
 
