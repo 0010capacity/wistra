@@ -86,6 +86,9 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Stats { stat_type, path, json }) => {
             run_stats(&path, &stat_type, json)?;
         }
+        Some(cli::Commands::Clean { path, dry_run, fix, json }) => {
+            run_clean(&path, dry_run, fix, json)?;
+        }
     }
 
     Ok(())
@@ -334,13 +337,13 @@ fn run_delete(path: &str, title: &str, dry_run: bool, no_confirm: bool) -> Resul
     std::fs::remove_file(&doc_path)?;
 
     // Update linking documents to remove links
-    if let Some(links) = incoming_links {
-        let mut updates = std::collections::HashMap::new();
-        updates.insert(title.to_string(), title.to_string()); // replace with self = remove effect
+    if let Some(_links) = incoming_links {
+        // Remove links pointing to the deleted document
+        let removed_count = writer::Linker::remove_links(&wiki_path, &[title.to_string()])?;
 
-        // Actually we want to just rewrite links to plain text, not redirect
-        // For now, just note that links remain
-        println!("   ⚠️  {} documents still have [[{}]] links", links.len(), title);
+        if removed_count > 0 {
+            println!("   🔗 Removed [[{}]] links from {} documents", title, removed_count);
+        }
     }
 
     println!("✅ Deleted successfully.");
@@ -866,6 +869,153 @@ fn run_stats(path: &str, stat_type: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+/// Run the clean command - detect and fix wiki technical debt
+fn run_clean(path: &str, dry_run: bool, fix: bool, json: bool) -> Result<()> {
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let concepts_dir = wiki_config.concepts_dir();
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    // Collect issues
+    let broken_links: Vec<&scanner::StubCandidate> = report.stub_candidates.iter().collect();
+
+    // Find orphan tags (tags used in only 1 document - potential typos)
+    let orphan_tags: Vec<(&String, usize)> = report.tag_stats.tag_counts
+        .iter()
+        .filter(|(_, count)| *count == 1)
+        .map(|(tag, count)| (tag, *count))
+        .collect();
+
+    // Find empty stubs (stub documents with no real content)
+    let empty_stubs: Vec<&types::Document> = report.documents
+        .values()
+        .filter(|doc| {
+            if doc.status != types::Status::Stub {
+                return false;
+            }
+            let body = doc.body.trim();
+            body.is_empty() || body.starts_with("<!-- stub:")
+        })
+        .collect();
+
+    // Find orphan documents (no incoming links)
+    let orphan_docs: Vec<&types::Document> = report.documents
+        .values()
+        .filter(|doc| {
+            match report.link_graph.incoming_links.get(&doc.title) {
+                None => true,
+                Some(links) => links.is_empty(),
+            }
+        })
+        .collect();
+
+    // Output results
+    if json {
+        let output = serde_json::json!({
+            "broken_links": broken_links.iter().map(|s| serde_json::json!({
+                "target": s.target,
+                "inbound_count": s.inbound_count
+            })).collect::<Vec<_>>(),
+            "orphan_tags": orphan_tags.iter().map(|(tag, count)| serde_json::json!({
+                "tag": tag,
+                "document_count": count
+            })).collect::<Vec<_>>(),
+            "empty_stubs": empty_stubs.iter().map(|doc| serde_json::json!({
+                "title": doc.title,
+                "filename": doc.filename()
+            })).collect::<Vec<_>>(),
+            "orphan_documents": orphan_docs.iter().map(|doc| serde_json::json!({
+                "title": doc.title,
+                "status": doc.status.to_string()
+            })).collect::<Vec<_>>(),
+            "summary": {
+                "broken_links_count": broken_links.len(),
+                "orphan_tags_count": orphan_tags.len(),
+                "empty_stubs_count": empty_stubs.len(),
+                "orphan_documents_count": orphan_docs.len()
+            }
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("🧹 Wiki Clean Report");
+        println!();
+
+        // Broken links
+        if broken_links.is_empty() {
+            println!("✅ Broken wikilinks: none");
+        } else {
+            println!("❌ Broken wikilinks: {}", broken_links.len());
+            for stub in &broken_links {
+                println!("   [[{}]] ({} incoming links)", stub.target, stub.inbound_count);
+            }
+        }
+        println!();
+
+        // Orphan tags
+        if orphan_tags.is_empty() {
+            println!("✅ Orphan tags: none");
+        } else {
+            println!("⚠️  Orphan tags (used in only 1 document): {}", orphan_tags.len());
+            for (tag, _) in &orphan_tags {
+                println!("   {}", tag);
+            }
+        }
+        println!();
+
+        // Empty stubs
+        if empty_stubs.is_empty() {
+            println!("✅ Empty stubs: none");
+        } else {
+            println!("⚠️  Empty stubs: {}", empty_stubs.len());
+            for doc in &empty_stubs {
+                println!("   [[{}]]", doc.title);
+            }
+        }
+        println!();
+
+        // Orphan documents
+        if orphan_docs.is_empty() {
+            println!("✅ Orphan documents: none");
+        } else {
+            println!("⚠️  Orphan documents (no incoming links): {}", orphan_docs.len());
+            for doc in &orphan_docs {
+                println!("   [[{}]] ({})", doc.title, doc.status);
+            }
+        }
+    }
+
+    // Handle --fix
+    if fix && !empty_stubs.is_empty() {
+        if dry_run {
+            println!();
+            println!("🏃 Dry run - would delete {} empty stubs", empty_stubs.len());
+        } else {
+            println!();
+            println!("🗑️  Deleting {} empty stubs...", empty_stubs.len());
+
+            for doc in &empty_stubs {
+                let filepath = concepts_dir.join(doc.filename());
+                if filepath.exists() {
+                    std::fs::remove_file(&filepath)?;
+                    println!("   Deleted: {}", doc.title);
+                }
+            }
+
+            // Re-scan to update meta files
+            let final_report = scanner::scan_wiki(&wiki_config)?;
+            scanner::meta::generate_meta_files(&wiki_config, &final_report)?;
+
+            println!("✅ Clean complete.");
+        }
+    } else if dry_run && !empty_stubs.is_empty() {
+        println!();
+        println!("💡 Run with --fix to delete empty stubs");
+    }
+
+    Ok(())
+}
+
 async fn run_wiki_growth(
     path: &str,
     count: usize,
@@ -950,7 +1100,10 @@ async fn run_wiki_growth(
     }
 
     // Initialize adapter
-    let adapter = adapter::claude::ClaudeAdapter::new(global_config.claude_api_key.clone());
+    let adapter = adapter::claude::ClaudeAdapter::new(
+        global_config.claude_api_key.as_str().to_string(),
+        global_config.claude_model.clone(),
+    );
 
     // Progress bar
     let pb = if !quiet {
@@ -1128,10 +1281,12 @@ async fn run_wiki_growth(
     Ok(())
 }
 
-fn count_link_updates(_report: &scanner::ScanReport) -> Vec<String> {
-    // Return files that would need link updates
-    // For now, return empty (will be populated when disambiguation is implemented)
-    Vec::new()
+fn count_link_updates(report: &scanner::ScanReport) -> Vec<String> {
+    // Return titles that need link updates due to disambiguation
+    report.disambig_candidates
+        .iter()
+        .map(|c| c.title.clone())
+        .collect()
 }
 
 fn build_disambig_contexts(

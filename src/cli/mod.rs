@@ -212,6 +212,25 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Detect and fix wiki technical debt
+    Clean {
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Dry run - preview without making changes
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Fix issues automatically (remove empty stubs)
+        #[arg(long)]
+        fix: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
