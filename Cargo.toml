@@ -2,8 +2,13 @@
 name = "wistra"
 version = "0.1.0"
 edition = "2021"
+authors = ["0010capacity"]
 description = "AI-powered personal wiki builder"
 license = "MIT"
+repository = "https://github.com/0010capacity/wistra"
+readme = "README.md"
+keywords = ["wiki", "ai", "markdown", "cli", "knowledge-graph"]
+categories = ["command-line-utilities", "text-processing"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
