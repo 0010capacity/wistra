@@ -2,37 +2,40 @@ use crate::adapter::{DisambigContext, DisambigResult, GenerationContext, Suggest
 use crate::types::{Document, Status};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
+use tokio::time::{Duration, timeout};
 
 /// Claude Code CLI adapter
 pub struct ClaudeAdapter {
     /// Path to claude CLI (default: "claude")
     cli_path: String,
+    /// Timeout for CLI commands
+    timeout_secs: u64,
 }
 
 impl ClaudeAdapter {
     pub fn new() -> Self {
         ClaudeAdapter {
             cli_path: "claude".to_string(),
+            timeout_secs: 300, // 5 minutes default
         }
     }
 
-    /// Create adapter with custom CLI path
-    #[allow(dead_code)]
-    pub fn with_path(cli_path: String) -> Self {
-        ClaudeAdapter { cli_path }
-    }
-
-    /// Call Claude CLI with a prompt
+    /// Call Claude CLI with a prompt and timeout
     async fn call_cli(&self, prompt: &str) -> Result<String> {
-        let output = Command::new(&self.cli_path)
-            .arg("-p")
-            .arg(prompt)
-            .arg("--output-format")
-            .arg("text")
-            .output()
-            .await
-            .context("Failed to execute claude CLI. Make sure Claude Code is installed.")?;
+        let output = timeout(
+            Duration::from_secs(self.timeout_secs),
+            Command::new(&self.cli_path)
+                .arg("-p")
+                .arg(prompt)
+                .arg("--output-format")
+                .arg("text")
+                .output()
+        )
+        .await
+        .context("Claude CLI timed out")?
+        .context("Failed to execute claude CLI. Make sure Claude Code is installed.")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -46,8 +49,46 @@ impl ClaudeAdapter {
     }
 }
 
-/// Read a written document (standalone function)
-fn read_document(path: &std::path::Path) -> Result<Document> {
+/// Validate that a path is within the wiki directory
+fn validate_path(path: &str, wiki_dir: &Path) -> Result<PathBuf> {
+    // Resolve the path relative to wiki_dir
+    let full_path = wiki_dir.join(path);
+
+    // Canonicalize both paths for comparison
+    let full_path = full_path.canonicalize()
+        .or_else(|_| {
+            // If canonicalize fails, check if parent exists and is within wiki
+            let parent = full_path.parent().unwrap_or(wiki_dir);
+            if parent.starts_with(wiki_dir) {
+                Ok(full_path)
+            } else {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path outside wiki directory",
+                ))
+            }
+        })?;
+
+    let wiki_dir = wiki_dir.canonicalize()
+        .context("Failed to canonicalize wiki directory")?;
+
+    // Ensure the path is within wiki_dir
+    if full_path.starts_with(&wiki_dir) {
+        Ok(full_path)
+    } else {
+        anyhow::bail!("Path escape detected: {} is outside {}", path, wiki_dir.display());
+    }
+}
+
+/// Read a written document with path validation
+fn read_document(path: &Path, wiki_dir: &Path) -> Result<Document> {
+    // Validate path is within wiki directory
+    validate_path(path.to_str().unwrap_or(""), wiki_dir)?;
+
+    if !path.exists() {
+        anyhow::bail!("File not found: {}. Claude may have failed to write it.", path.display());
+    }
+
     let content = std::fs::read_to_string(path)
         .context("Failed to read written document")?;
     parse_document_content(&content)
@@ -86,7 +127,7 @@ Wiki index (title, tags, summary):
 7. Search the web for relevant information to make the article accurate and comprehensive
 8. Do NOT wrap output in code fences. Write raw Markdown only.
 
-After writing the file, confirm with "OK" only.
+After writing the file, output "OK" only.
 "#,
             ctx.concept_name,
             file_path.display(),
@@ -98,16 +139,34 @@ After writing the file, confirm with "OK" only.
             ctx.related_docs.join(", ")
         );
 
-        let _response = self.call_cli(&prompt).await?;
-        read_document(&file_path)
+        let response = self.call_cli(&prompt).await?;
+
+        // Verify file was written
+        if !file_path.exists() {
+            anyhow::bail!(
+                "File not found at {} after CLI completed. Response: {}",
+                file_path.display(),
+                response
+            );
+        }
+
+        // Validate and read the file
+        read_document(&file_path, &ctx.concepts_dir)
     }
 
     async fn resolve_disambiguation(&self, ctx: DisambigContext) -> Result<DisambigResult> {
+        // Get the wiki directory from context (parent of concepts_dir)
+        let wiki_dir = ctx.wiki_index.entries.first()
+            .map(|_| PathBuf::from(".")) // Fallback - we'll use concepts_dir for validation
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        let concepts_dir = wiki_dir.join("concepts");
+
         let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
             .context("Failed to serialize wiki index")?;
 
         let prompt = format!(
-            r#"Resolve disambiguation for title '{}'. Write 3 files:
+            r#"Resolve disambiguation for title '{}'. Write 3 files in the concepts/ directory:
 
 1. DISAMBIGUATION PAGE: concepts/{}-disambiguation.md
 2. CONCEPT A: concepts/ConceptA.md (use appropriate name)
@@ -141,7 +200,7 @@ After writing all 3 files, output JSON only:
         );
 
         let response = self.call_cli(&prompt).await?;
-        parse_disambig_response(&response)
+        parse_disambig_response(&response, &concepts_dir)
     }
 
     async fn suggest_concept(&self, ctx: SuggestionContext) -> Result<SuggestedConcept> {
@@ -280,7 +339,7 @@ fn parse_yaml_simple(yaml: &str) -> Result<std::collections::HashMap<String, Str
     Ok(fields)
 }
 
-fn parse_disambig_response(content: &str) -> Result<DisambigResult> {
+fn parse_disambig_response(content: &str, concepts_dir: &Path) -> Result<DisambigResult> {
     let content = content.trim();
 
     // Remove markdown code fences if present
@@ -304,10 +363,10 @@ fn parse_disambig_response(content: &str) -> Result<DisambigResult> {
     let concept_b_path = json["concept_b_path"].as_str()
         .context("Missing concept_b_path")?;
 
-    // Read the written files
-    let disambig_doc = read_document(std::path::Path::new(disambig_path))?;
-    let concept_a = read_document(std::path::Path::new(concept_a_path))?;
-    let concept_b = read_document(std::path::Path::new(concept_b_path))?;
+    // Read the written files with path validation
+    let disambig_doc = read_document(Path::new(disambig_path), concepts_dir)?;
+    let concept_a = read_document(Path::new(concept_a_path), concepts_dir)?;
+    let concept_b = read_document(Path::new(concept_b_path), concepts_dir)?;
 
     let link_updates: Vec<crate::adapter::LinkUpdate> = json["link_updates"]
         .as_array()
