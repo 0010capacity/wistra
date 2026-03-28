@@ -23,7 +23,7 @@ impl ClaudeAdapter {
     }
 
     /// Call Claude CLI with a prompt and timeout
-    async fn call_cli(&self, prompt: &str) -> Result<String> {
+    async fn call_cli(&self, prompt: &str, wiki_dir: &Path) -> Result<String> {
         let output = timeout(
             Duration::from_secs(self.timeout_secs),
             Command::new(&self.cli_path)
@@ -31,6 +31,8 @@ impl ClaudeAdapter {
                 .arg(prompt)
                 .arg("--output-format")
                 .arg("text")
+                .arg("--add-dir")
+                .arg(wiki_dir)
                 .output()
         )
         .await
@@ -139,7 +141,7 @@ After writing the file, output "OK" only.
             ctx.related_docs.join(", ")
         );
 
-        let response = self.call_cli(&prompt).await?;
+        let response = self.call_cli(&prompt, &ctx.wiki_dir).await?;
 
         // Verify file was written
         if !file_path.exists() {
@@ -155,11 +157,7 @@ After writing the file, output "OK" only.
     }
 
     async fn resolve_disambiguation(&self, ctx: DisambigContext) -> Result<DisambigResult> {
-        // Get the wiki directory from context (parent of concepts_dir)
-        let wiki_dir = ctx.wiki_index.entries.first()
-            .map(|_| PathBuf::from(".")) // Fallback - we'll use concepts_dir for validation
-            .unwrap_or_else(|| PathBuf::from("."));
-
+        let wiki_dir = &ctx.wiki_dir;
         let concepts_dir = wiki_dir.join("concepts");
 
         let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
@@ -199,7 +197,7 @@ After writing all 3 files, output JSON only:
             ctx.title
         );
 
-        let response = self.call_cli(&prompt).await?;
+        let response = self.call_cli(&prompt, wiki_dir).await?;
         parse_disambig_response(&response, &concepts_dir)
     }
 
@@ -239,7 +237,7 @@ Return JSON only, no other text:
             wiki_index_json
         );
 
-        let response = self.call_cli(&prompt).await?;
+        let response = self.call_cli(&prompt, &ctx.wiki_dir).await?;
         parse_suggestion_response(&response)
     }
 }

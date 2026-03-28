@@ -1,4 +1,5 @@
 pub mod config;
+pub mod cron;
 pub mod onboard;
 
 use clap::Subcommand;
@@ -282,6 +283,25 @@ pub enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+    },
+
+    /// Manage cron job for scheduled runs
+    Cron {
+        /// Set cron time (HH:MM format, e.g., 14:30)
+        #[arg(long, value_name = "TIME")]
+        set: Option<String>,
+
+        /// Show current wistra cron job
+        #[arg(long)]
+        show: bool,
+
+        /// Remove wistra cron job
+        #[arg(long)]
+        remove: bool,
+
+        /// Install cron job automatically
+        #[arg(long)]
+        install: bool,
     },
 }
 

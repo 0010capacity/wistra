@@ -9,6 +9,7 @@ use crate::types::{Document, WikiIndex};
 pub struct GenerationContext {
     pub concept_name: String,
     pub concepts_dir: std::path::PathBuf,
+    pub wiki_dir: std::path::PathBuf,
     pub related_docs: Vec<String>,
     pub wiki_index: WikiIndex,
     pub language: String,
@@ -20,6 +21,7 @@ pub struct GenerationContext {
 #[allow(dead_code)]
 pub struct DisambigContext {
     pub title: String,
+    pub wiki_dir: std::path::PathBuf,
     pub context_a: Vec<String>,
     pub context_b: Vec<String>,
     pub wiki_index: WikiIndex,
@@ -29,6 +31,7 @@ pub struct DisambigContext {
 /// Context for concept suggestion
 #[derive(Debug, Clone)]
 pub struct SuggestionContext {
+    pub wiki_dir: std::path::PathBuf,
     pub wiki_index: WikiIndex,
     pub interests: Vec<String>,
     pub language: String,

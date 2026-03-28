@@ -100,6 +100,9 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;
         }
+        Some(cli::Commands::Cron { set, show, remove, install }) => {
+            run_cron(set.as_deref(), show, remove, install)?;
+        }
     }
 
     Ok(())
@@ -1146,6 +1149,7 @@ async fn run_wiki_growth(
                 let ctx = adapter::GenerationContext {
                     concept_name: slot.target.clone(),
                     concepts_dir: wiki_config.concepts_dir(),
+                    wiki_dir: wiki_config.root_path.clone(),
                     related_docs: find_related_docs(&report, &slot.target),
                     wiki_index: report.wiki_index.clone(),
                     language: global_config.language.clone(),
@@ -1168,6 +1172,7 @@ async fn run_wiki_growth(
 
                     let ctx = adapter::DisambigContext {
                         title: slot.target.clone(),
+                        wiki_dir: wiki_path.clone(),
                         context_a,
                         context_b,
                         wiki_index: report.wiki_index.clone(),
@@ -1211,6 +1216,7 @@ async fn run_wiki_growth(
             planner::PlanAction::Random => {
                 // Ask AI to suggest a concept based on interests
                 let ctx = SuggestionContext {
+                    wiki_dir: wiki_path.clone(),
                     wiki_index: report.wiki_index.clone(),
                     interests: global_config.interests.clone(),
                     language: global_config.language.clone(),
@@ -1226,6 +1232,7 @@ async fn run_wiki_growth(
                         let gen_ctx = adapter::GenerationContext {
                             concept_name: suggestion.title.clone(),
                             concepts_dir: wiki_config.concepts_dir(),
+                            wiki_dir: wiki_path.clone(),
                             related_docs: suggestion.related_existing.clone(),
                             wiki_index: report.wiki_index.clone(),
                             language: global_config.language.clone(),
@@ -1611,4 +1618,61 @@ fn normalize_for_comparison(s: &str) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+/// Run the cron command - manage cron jobs
+fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool) -> Result<()> {
+    // Default: show help if no options
+    if set.is_none() && !show && !remove && !install {
+        println!("wistra cron - Manage scheduled runs");
+        println!();
+        println!("Usage:");
+        println!("  wistra cron --set 14:30     Set cron time (shows crontab line)");
+        println!("  wistra cron --set 14:30 --install  Auto-install to crontab");
+        println!("  wistra cron --show          Show current crontab line");
+        println!("  wistra cron --remove        Remove wistra from crontab");
+        return Ok(());
+    }
+
+    // Handle --set
+    if let Some(time) = set {
+        let (hour, minute) = cli::cron::parse_time(time)?;
+
+        if install {
+            cli::cron::install_cron(hour, minute)?;
+        } else {
+            cli::cron::show_cron(hour, minute);
+        }
+        return Ok(());
+    }
+
+    // Handle --show
+    if show {
+        // Get current crontab and find wistra line
+        let output = std::process::Command::new("crontab")
+            .arg("-l")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .unwrap_or_default();
+
+        let wistra_line = output.lines()
+            .find(|line| line.contains("wistra run"));
+
+        if let Some(line) = wistra_line {
+            println!("Current cron job:");
+            println!("    {}", line);
+        } else {
+            println!("No wistra cron job found.");
+            println!("Run `wistra cron --set <TIME>` to create one.");
+        }
+        return Ok(());
+    }
+
+    // Handle --remove
+    if remove {
+        cli::cron::remove_cron()?;
+    }
+
+    Ok(())
 }
