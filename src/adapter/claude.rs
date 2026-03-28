@@ -33,8 +33,7 @@ impl ClaudeAdapter {
                 .arg("text")
                 .arg("--add-dir")
                 .arg(wiki_dir)
-                .arg("--permission-mode")
-                .arg("acceptEdits")
+                .arg("--dangerously-skip-permissions")
                 .output()
         )
         .await
