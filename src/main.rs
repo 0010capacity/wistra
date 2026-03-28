@@ -6,7 +6,7 @@ mod scanner;
 mod types;
 mod writer;
 
-use crate::adapter::WikiAdapter;
+use crate::adapter::{SuggestionContext, WikiAdapter};
 use crate::scanner::DisambigCandidate;
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -56,6 +56,24 @@ async fn main() -> Result<()> {
         }
         Some(cli::Commands::Run { path, count, dry_run, quiet, no_confirm }) => {
             run_wiki_growth(&path, count, dry_run, quiet, no_confirm).await?;
+        }
+        Some(cli::Commands::Rename { old_title, new_title, path, dry_run }) => {
+            run_rename(&path, &old_title, &new_title, dry_run)?;
+        }
+        Some(cli::Commands::Merge { source, target, path, dry_run }) => {
+            run_merge(&path, &source, &target, dry_run)?;
+        }
+        Some(cli::Commands::Delete { title, path, dry_run, no_confirm }) => {
+            run_delete(&path, &title, dry_run, no_confirm)?;
+        }
+        Some(cli::Commands::Backlinks { title, path, json }) => {
+            run_backlinks(&path, &title, json)?;
+        }
+        Some(cli::Commands::Orphans { path, exclude_stubs, sort, json }) => {
+            run_orphans(&path, exclude_stubs, &sort, json)?;
+        }
+        Some(cli::Commands::Search { query, path, case_sensitive, regex, json }) => {
+            run_search(&path, &query, case_sensitive, regex, json)?;
         }
     }
 
@@ -111,6 +129,412 @@ fn run_status(path: &str) -> Result<()> {
     let report = scanner::scan_wiki(&wiki_config)?;
 
     report.print_status();
+
+    Ok(())
+}
+
+fn run_rename(path: &str, old_title: &str, new_title: &str, dry_run: bool) -> Result<()> {
+    use crate::scanner::parser;
+
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let concepts_dir = wiki_config.concepts_dir();
+
+    // Find the document
+    let filename = format!("{}.md", old_title);
+    let old_path = concepts_dir.join(&filename);
+
+    if !old_path.exists() {
+        anyhow::bail!("Document not found: {}", old_title);
+    }
+
+    let _doc = parser::parse_document(&old_path)?
+        .context("Failed to parse document")?;
+
+    // Preview changes
+    let new_filename = format!("{}.md", new_title);
+    let new_path = concepts_dir.join(&new_filename);
+
+    println!("📝 Rename: {} → {}", old_title, new_title);
+    println!("   File: {} → {}", old_path.display(), new_path.display());
+
+    // Check for conflicts
+    if new_path.exists() && old_path != new_path {
+        anyhow::bail!("Target file already exists: {}", new_title);
+    }
+
+    if dry_run {
+        println!("🏃 Dry run - no changes made.");
+        return Ok(());
+    }
+
+    // Update frontmatter title in content
+    let content = std::fs::read_to_string(&old_path)?;
+    let new_content = content.replace(
+        &format!("title: {}", serde_json::to_string(old_title).unwrap()),
+        &format!("title: {}", serde_json::to_string(new_title).unwrap()),
+    );
+
+    // Rename the file
+    std::fs::write(&old_path, &new_content)?;
+    std::fs::rename(&old_path, &new_path)?;
+
+    // Update all links pointing to the old title
+    let mut updates = std::collections::HashMap::new();
+    updates.insert(old_title.to_string(), new_title.to_string());
+    let link_count = writer::Linker::rewrite_links(&wiki_path, &updates)?;
+
+    println!("✅ Renamed successfully.");
+    println!("   Links updated: {}", link_count);
+
+    // Re-scan to update meta files
+    let report = scanner::scan_wiki(&wiki_config)?;
+    scanner::meta::generate_meta_files(&wiki_config, &report)?;
+
+    Ok(())
+}
+
+fn run_merge(path: &str, source: &str, target: &str, dry_run: bool) -> Result<()> {
+    use crate::scanner::parser;
+
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let concepts_dir = wiki_config.concepts_dir();
+
+    // Find source document
+    let source_filename = format!("{}.md", source);
+    let source_path = concepts_dir.join(&source_filename);
+
+    if !source_path.exists() {
+        anyhow::bail!("Source document not found: {}", source);
+    }
+
+    // Find target document
+    let target_filename = format!("{}.md", target);
+    let target_path = concepts_dir.join(&target_filename);
+
+    if !target_path.exists() {
+        anyhow::bail!("Target document not found: {}", target);
+    }
+
+    let source_doc = parser::parse_document(&source_path)?
+        .context("Failed to parse source document")?;
+    let mut target_doc = parser::parse_document(&target_path)?
+        .context("Failed to parse target document")?;
+
+    println!("🔀 Merge: {} → {}", source, target);
+    println!("   Source: {}", source_path.display());
+    println!("   Target: {}", target_path.display());
+
+    // Merge tags (combine, dedupe)
+    for tag in &source_doc.tags {
+        if !target_doc.tags.contains(tag) {
+            target_doc.tags.push(tag.clone());
+        }
+    }
+
+    // Merge aliases (combine, dedupe)
+    for alias in &source_doc.aliases {
+        if !target_doc.aliases.contains(alias) {
+            target_doc.aliases.push(alias.clone());
+        }
+    }
+
+    println!("   Tags: {} → {}", source_doc.tags.len(), target_doc.tags.len());
+    println!("   Aliases: {} → {}", source_doc.aliases.len(), target_doc.aliases.len());
+
+    if dry_run {
+        println!("🏃 Dry run - no changes made.");
+        return Ok(());
+    }
+
+    // Update target document
+    writer::DocumentWriter::write(&target_doc, &concepts_dir)?;
+
+    // Delete source document
+    std::fs::remove_file(&source_path)?;
+
+    // Update all links from source to target
+    let mut updates = std::collections::HashMap::new();
+    updates.insert(source.to_string(), target.to_string());
+    let link_count = writer::Linker::rewrite_links(&wiki_path, &updates)?;
+
+    println!("✅ Merged successfully.");
+    println!("   Links updated: {}", link_count);
+
+    // Re-scan to update meta files
+    let report = scanner::scan_wiki(&wiki_config)?;
+    scanner::meta::generate_meta_files(&wiki_config, &report)?;
+
+    Ok(())
+}
+
+fn run_delete(path: &str, title: &str, dry_run: bool, no_confirm: bool) -> Result<()> {
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let concepts_dir = wiki_config.concepts_dir();
+
+    // Find the document
+    let filename = format!("{}.md", title);
+    let doc_path = concepts_dir.join(&filename);
+
+    if !doc_path.exists() {
+        anyhow::bail!("Document not found: {}", title);
+    }
+
+    // Scan to find linking documents
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    let incoming_links = report.link_graph.incoming_links.get(title);
+
+    println!("🗑️  Delete: {}", title);
+    println!("   File: {}", doc_path.display());
+
+    if let Some(links) = incoming_links {
+        println!("   ⚠️  {} documents link to this:", links.len());
+        for link in links {
+            println!("      - [[{}]]", link.source_file.replace(".md", ""));
+        }
+    } else {
+        println!("   No incoming links.");
+    }
+
+    if dry_run {
+        println!("🏃 Dry run - no changes made.");
+        return Ok(());
+    }
+
+    if !no_confirm {
+        use dialoguer::Confirm;
+        let proceed = Confirm::new()
+            .with_prompt("Delete this document?")
+            .default(false)
+            .interact()?;
+        if !proceed {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Delete the document
+    std::fs::remove_file(&doc_path)?;
+
+    // Update linking documents to remove links
+    if let Some(links) = incoming_links {
+        let mut updates = std::collections::HashMap::new();
+        updates.insert(title.to_string(), title.to_string()); // replace with self = remove effect
+
+        // Actually we want to just rewrite links to plain text, not redirect
+        // For now, just note that links remain
+        println!("   ⚠️  {} documents still have [[{}]] links", links.len(), title);
+    }
+
+    println!("✅ Deleted successfully.");
+
+    // Re-scan to update meta files
+    let report = scanner::scan_wiki(&wiki_config)?;
+    scanner::meta::generate_meta_files(&wiki_config, &report)?;
+
+    Ok(())
+}
+
+/// Run the backlinks command - show documents that link to a specific document
+fn run_backlinks(path: &str, title: &str, json: bool) -> Result<()> {
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    // Find incoming links for the target title
+    let incoming = report.link_graph.incoming_links.get(title);
+
+    if json {
+        let sources: Vec<String> = incoming
+            .map(|links| links.iter().map(|l| l.source_file.replace(".md", "")).collect())
+            .unwrap_or_default();
+        let output = serde_json::json!({
+            "title": title,
+            "count": sources.len(),
+            "sources": sources
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        match incoming {
+            Some(links) if !links.is_empty() => {
+                println!("{} documents link to [[{}]]:", links.len(), title);
+                for link in links {
+                    println!("  - [[{}]]", link.source_file.replace(".md", ""));
+                }
+            }
+            _ => {
+                println!("No documents link to [[{}]]", title);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the orphans command - find documents with no incoming links
+fn run_orphans(path: &str, exclude_stubs: bool, sort: &str, json: bool) -> Result<()> {
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    // Find documents with no incoming links
+    let mut orphans: Vec<(&String, &types::Document)> = report.documents
+        .iter()
+        .filter(|(_, doc)| {
+            // Skip stubs if requested
+            if exclude_stubs && doc.status == types::Status::Stub {
+                return false;
+            }
+
+            // Check if there are no incoming links
+            match report.link_graph.incoming_links.get(&doc.title) {
+                None => true,
+                Some(links) => links.is_empty(),
+            }
+        })
+        .collect();
+
+    // Sort orphans
+    match sort {
+        "created" => {
+            orphans.sort_by(|a, b| b.1.created.cmp(&a.1.created));
+        }
+        "tags" => {
+            orphans.sort_by(|a, b| a.1.tags.len().cmp(&b.1.tags.len()));
+        }
+        _ => {
+            // Default: sort by title
+            orphans.sort_by(|a, b| a.1.title.cmp(&b.1.title));
+        }
+    }
+
+    if json {
+        let orphan_list: Vec<serde_json::Value> = orphans
+            .iter()
+            .map(|(_, doc)| {
+                serde_json::json!({
+                    "title": doc.title,
+                    "status": doc.status.to_string(),
+                    "tags": doc.tags,
+                    "created": doc.created.to_string()
+                })
+            })
+            .collect();
+        let output = serde_json::json!({
+            "count": orphan_list.len(),
+            "orphans": orphan_list
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        if orphans.is_empty() {
+            println!("No orphan documents found.");
+        } else {
+            println!("{} orphan documents (no incoming links):", orphans.len());
+            for (_, doc) in &orphans {
+                println!("  - [[{}]] ({})", doc.title, doc.status);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the search command - full text search across documents
+fn run_search(path: &str, query: &str, case_sensitive: bool, use_regex: bool, json: bool) -> Result<()> {
+    use regex::RegexBuilder;
+
+    let path = shellexpand::tilde(path).to_string();
+    let wiki_path = PathBuf::from(path);
+    let wiki_config = config::WikiConfig::load(&wiki_path)?;
+    let report = scanner::scan_wiki(&wiki_config)?;
+
+    let pattern: String = if use_regex {
+        query.to_string()
+    } else {
+        // Escape special regex characters for literal search
+        regex::escape(query)
+    };
+
+    let regex = RegexBuilder::new(&pattern)
+        .case_insensitive(!case_sensitive)
+        .build()
+        .context("Invalid search pattern")?;
+
+    let mut results: Vec<(String, String, &types::Document)> = Vec::new();
+
+    for (_, doc) in &report.documents {
+        let mut match_type = String::new();
+
+        // Check title
+        if regex.is_match(&doc.title) {
+            match_type = "title".to_string();
+        }
+        // Check body
+        else if regex.is_match(&doc.body) {
+            match_type = "body".to_string();
+        }
+        // Check tags
+        else if doc.tags.iter().any(|t| regex.is_match(t)) {
+            match_type = "tags".to_string();
+        }
+        // Check aliases
+        else if doc.aliases.iter().any(|a| regex.is_match(a)) {
+            match_type = "alias".to_string();
+        }
+
+        if !match_type.is_empty() {
+            results.push((doc.title.clone(), match_type, doc));
+        }
+    }
+
+    // Sort results: title matches first, then body, then tags/aliases
+    results.sort_by(|a, b| {
+        let order = |t: &str| match t {
+            "title" => 0,
+            "body" => 1,
+            "tags" => 2,
+            "alias" => 3,
+            _ => 4,
+        };
+        order(&a.1).cmp(&order(&b.1))
+    });
+
+    if json {
+        let result_list: Vec<serde_json::Value> = results
+            .iter()
+            .map(|(title, match_type, doc)| {
+                serde_json::json!({
+                    "title": title,
+                    "match": match_type,
+                    "status": doc.status.to_string(),
+                    "tags": doc.tags
+                })
+            })
+            .collect();
+        let output = serde_json::json!({
+            "query": query,
+            "count": result_list.len(),
+            "results": result_list
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        if results.is_empty() {
+            println!("No results for \"{}\"", query);
+        } else {
+            println!("{} results for \"{}\":", results.len(), query);
+            for (title, match_type, _) in &results {
+                println!("  - [[{}]] ({} match)", title, match_type);
+            }
+        }
+    }
 
     Ok(())
 }
@@ -288,8 +712,43 @@ async fn run_wiki_growth(
                 }
             }
             planner::PlanAction::Random => {
-                // Interest-based random selection not yet implemented via AI
-                // Fall back to skipping
+                // Ask AI to suggest a concept based on interests
+                let ctx = SuggestionContext {
+                    wiki_index: report.wiki_index.clone(),
+                    interests: global_config.interests.clone(),
+                    language: global_config.language.clone(),
+                    tag_index: build_tag_index(&report),
+                };
+
+                match adapter.suggest_concept(ctx).await {
+                    Ok(suggestion) => {
+                        if !quiet {
+                            println!("   💡 Suggested: {} ({})", suggestion.title, suggestion.reason);
+                        }
+                        // Generate the suggested concept
+                        let gen_ctx = adapter::GenerationContext {
+                            concept_name: suggestion.title.clone(),
+                            related_docs: suggestion.related_existing.clone(),
+                            wiki_index: report.wiki_index.clone(),
+                            language: global_config.language.clone(),
+                            tag_index: build_tag_index(&report),
+                        };
+
+                        match adapter.generate_concept(gen_ctx).await {
+                            Ok(doc) => generated_docs.push(doc),
+                            Err(e) => {
+                                if !quiet {
+                                    eprintln!("❌ Failed to generate {}: {}", suggestion.title, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("❌ Failed to suggest concept: {}", e);
+                        }
+                    }
+                }
             }
         }
 
