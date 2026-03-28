@@ -106,7 +106,10 @@ impl Default for ClaudeAdapter {
 #[async_trait]
 impl WikiAdapter for ClaudeAdapter {
     async fn generate_concept(&self, ctx: GenerationContext) -> Result<Document> {
-        let file_path = ctx.concepts_dir.join(format!("{}.md", ctx.concept_name));
+        // Ensure concepts_dir is absolute
+        let concepts_dir = ctx.concepts_dir.canonicalize()
+            .unwrap_or_else(|_| ctx.concepts_dir.clone());
+        let file_path = concepts_dir.join(format!("{}.md", ctx.concept_name));
         let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
             .context("Failed to serialize wiki index")?;
 
@@ -170,22 +173,25 @@ After writing the file, output "OK" only.
         }
 
         // Validate and read the file
-        read_document(&file_path, &ctx.concepts_dir)
+        read_document(&file_path, &concepts_dir)
     }
 
     async fn resolve_disambiguation(&self, ctx: DisambigContext) -> Result<DisambigResult> {
         let wiki_dir = &ctx.wiki_dir;
-        let concepts_dir = wiki_dir.join("concepts");
+        // Ensure paths are absolute
+        let wiki_dir_abs = wiki_dir.canonicalize()
+            .unwrap_or_else(|_| wiki_dir.clone());
+        let concepts_dir = wiki_dir_abs.join("concepts");
 
         let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
             .context("Failed to serialize wiki index")?;
 
         let prompt = format!(
-            r#"Resolve disambiguation for title '{}'. Write 3 files in the concepts/ directory:
+            r#"Resolve disambiguation for title '{}'. Write 3 files:
 
-1. DISAMBIGUATION PAGE: concepts/{}-disambiguation.md
-2. CONCEPT A: concepts/ConceptA.md (use appropriate name)
-3. CONCEPT B: concepts/ConceptB.md (use appropriate name)
+1. DISAMBIGUATION PAGE: {}
+2. CONCEPT A: {}/ConceptA.md (use appropriate name)
+3. CONCEPT B: {}/ConceptB.md (use appropriate name)
 
 [Wiki Context]
 Language: {}
@@ -203,10 +209,12 @@ Context from linking documents:
 - Search web for accurate information
 
 After writing all 3 files, output JSON only:
-{{"disambig_path": "concepts/{}-disambiguation.md", "concept_a_path": "concepts/ConceptA.md", "concept_b_path": "concepts/ConceptB.md", "link_updates": []}}
+{{"disambig_path": "{}-disambiguation.md", "concept_a_path": "ConceptA.md", "concept_b_path": "ConceptB.md", "link_updates": []}}
 "#,
             ctx.title,
-            ctx.title,
+            concepts_dir.join(format!("{}-disambiguation.md", ctx.title)).display(),
+            concepts_dir.display(),
+            concepts_dir.display(),
             ctx.language,
             wiki_index_json,
             ctx.context_a.join("; "),
@@ -379,9 +387,9 @@ fn parse_disambig_response(content: &str, concepts_dir: &Path) -> Result<Disambi
         .context("Missing concept_b_path")?;
 
     // Read the written files with path validation
-    let disambig_doc = read_document(Path::new(disambig_path), concepts_dir)?;
-    let concept_a = read_document(Path::new(concept_a_path), concepts_dir)?;
-    let concept_b = read_document(Path::new(concept_b_path), concepts_dir)?;
+    let disambig_doc = read_document(&concepts_dir.join(disambig_path), concepts_dir)?;
+    let concept_a = read_document(&concepts_dir.join(concept_a_path), concepts_dir)?;
+    let concept_b = read_document(&concepts_dir.join(concept_b_path), concepts_dir)?;
 
     let link_updates: Vec<crate::adapter::LinkUpdate> = json["link_updates"]
         .as_array()
