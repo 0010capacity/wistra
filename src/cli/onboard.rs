@@ -1,6 +1,6 @@
 use crate::config::{GlobalConfig, WikiConfig, INTEREST_DOMAINS, LANGUAGES, ensure_global_config_dir};
 use anyhow::{Context, Result};
-use dialoguer::{Input, Select, MultiSelect, Password};
+use dialoguer::{Input, Select, MultiSelect};
 use std::path::PathBuf;
 
 /// Run the onboarding wizard
@@ -32,33 +32,14 @@ pub fn run_onboard() -> Result<()> {
 
     let language = LANGUAGES[language_idx].0.to_string();
 
-    // Step 3: Adapter selection (only Claude for now)
-    let adapter_idx = Select::new()
-        .with_prompt("Adapter")
-        .items(&["Claude API"])
-        .default(0)
-        .interact()
-        .context("Failed to select adapter")?;
-
-    let _adapter = match adapter_idx {
-        0 => "claude",
-        _ => "claude",
-    };
-
-    // Step 4: Claude API key
-    let api_key = Password::new()
-        .with_prompt("Claude API key")
-        .interact()
-        .context("Failed to read API key")?;
-
-    // Step 5: Daily concept count
+    // Step 3: Daily concept count
     let daily_count: usize = Input::new()
         .with_prompt("Daily concept count")
         .default(5)
         .interact_text()
         .context("Failed to read daily count")?;
 
-    // Step 6: Interest domains
+    // Step 4: Interest domains
     let interest_items: Vec<&str> = INTEREST_DOMAINS.iter().map(|(_, name)| *name).collect();
     let selected_indices = MultiSelect::new()
         .with_prompt("Interests (space to select)")
@@ -71,7 +52,7 @@ pub fn run_onboard() -> Result<()> {
         .map(|&idx| INTEREST_DOMAINS[idx].0.to_string())
         .collect();
 
-    // Step 7: Cron job setup
+    // Step 5: Cron job setup
     let setup_cron = Select::new()
         .with_prompt("Set up daily cron job?")
         .items(&["Yes", "No"])
@@ -83,7 +64,6 @@ pub fn run_onboard() -> Result<()> {
     let config = GlobalConfig {
         wiki_path: Some(wiki_path.clone()),
         language,
-        claude_api_key: api_key,
         daily_count,
         interests,
     };

@@ -10,8 +10,6 @@ pub struct GlobalConfig {
     pub wiki_path: Option<PathBuf>,
     /// User's preferred language (ISO 639-1)
     pub language: String,
-    /// Claude API key
-    pub claude_api_key: String,
     /// Daily concept generation count
     #[serde(default = "default_daily_count")]
     pub daily_count: usize,
@@ -28,7 +26,6 @@ impl Default for GlobalConfig {
         GlobalConfig {
             wiki_path: None,
             language: "en".to_string(),
-            claude_api_key: String::new(),
             daily_count: 5,
             interests: vec![],
         }

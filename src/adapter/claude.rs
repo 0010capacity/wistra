@@ -2,69 +2,72 @@ use crate::adapter::{DisambigContext, DisambigResult, GenerationContext, Suggest
 use crate::types::{Document, Status};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use reqwest::Client;
+use tokio::process::Command;
 
-const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
-
-/// Claude API adapter
+/// Claude Code CLI adapter
 pub struct ClaudeAdapter {
-    client: Client,
-    api_key: String,
+    /// Path to claude CLI (default: "claude")
+    cli_path: String,
 }
 
 impl ClaudeAdapter {
-    pub fn new(api_key: String) -> Self {
+    pub fn new() -> Self {
         ClaudeAdapter {
-            client: Client::new(),
-            api_key,
+            cli_path: "claude".to_string(),
         }
     }
 
-    async fn call_api(&self, prompt: &str) -> Result<String> {
-        let response = self
-            .client
-            .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&serde_json::json!({
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 4096,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            }))
-            .send()
-            .await
-            .context("Failed to call Claude API")?;
+    /// Create adapter with custom CLI path
+    #[allow(dead_code)]
+    pub fn with_path(cli_path: String) -> Self {
+        ClaudeAdapter { cli_path }
+    }
 
-        if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Claude API error: {}", error_text));
+    /// Call Claude CLI with a prompt
+    async fn call_cli(&self, prompt: &str) -> Result<String> {
+        let output = Command::new(&self.cli_path)
+            .arg("-p")
+            .arg(prompt)
+            .arg("--output-format")
+            .arg("text")
+            .output()
+            .await
+            .context("Failed to execute claude CLI. Make sure Claude Code is installed.")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Claude CLI error: {}", stderr));
         }
 
-        let json: serde_json::Value = response.json().await.context("Failed to parse API response")?;
+        let response = String::from_utf8(output.stdout)
+            .context("Failed to parse CLI output as UTF-8")?;
 
-        let content = json["content"][0]["text"]
-            .as_str()
-            .ok_or_else(|| anyhow!("Unexpected API response format"))?
-            .to_string();
+        Ok(response.trim().to_string())
+    }
+}
 
-        Ok(content)
+/// Read a written document (standalone function)
+fn read_document(path: &std::path::Path) -> Result<Document> {
+    let content = std::fs::read_to_string(path)
+        .context("Failed to read written document")?;
+    parse_document_content(&content)
+}
+
+impl Default for ClaudeAdapter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[async_trait]
 impl WikiAdapter for ClaudeAdapter {
     async fn generate_concept(&self, ctx: GenerationContext) -> Result<Document> {
+        let file_path = ctx.concepts_dir.join(format!("{}.md", ctx.concept_name));
         let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
             .context("Failed to serialize wiki index")?;
 
         let prompt = format!(
-            r#"You are an editor writing documents for a personal knowledge wiki.
+            r#"Write a wiki document for concept '{}' and save it to: {}
 
 [Wiki Context]
 Language: {}
@@ -73,68 +76,71 @@ Tag hierarchy: {}
 Wiki index (title, tags, summary):
 {}
 
-[Writing Rules]
-1. Return a single complete Markdown document including YAML frontmatter
-2. Required frontmatter fields: title (English), aliases, tags, status (published), language, created
-3. If language is Korean: write body in Korean, include Korean aliases
-4. Tags must fit the existing hierarchy. New tags must extend existing branches
-5. Reference related existing documents using [[wikilinks]] naturally in the body
-6. Use LaTeX for math ($inline$, $$block$$), fenced code blocks with language tags, blockquotes for citations
-7. Use Obsidian callout syntax for notes: > [!note]
-8. Length: 300–800 words
-9. Do not wrap in code fences. Return raw Markdown only.
+[Writing Instructions]
+1. Create a Markdown file at the path above with YAML frontmatter
+2. Required frontmatter: title (English), aliases, tags, status (published), language, created
+3. Body: {} language, 300–800 words
+4. Use [[wikilinks]] to link to related docs: {}
+5. Use LaTeX for math ($inline$, $$block$$), fenced code blocks, blockquotes for citations
+6. Use Obsidian callout syntax for notes: > [!note]
+7. Search the web for relevant information to make the article accurate and comprehensive
+8. Do NOT wrap output in code fences. Write raw Markdown only.
 
-[Target Concept]
-Name: {}
-Related existing documents: {}
+After writing the file, confirm with "OK" only.
 "#,
+            ctx.concept_name,
+            file_path.display(),
             ctx.language,
             ctx.wiki_index.entries.len(),
             ctx.tag_index,
             wiki_index_json,
-            ctx.concept_name,
+            ctx.language,
             ctx.related_docs.join(", ")
         );
 
-        let response = self.call_api(&prompt).await?;
-
-        // Parse the response as a document
-        parse_generated_document(&response, &ctx.language)
+        let _response = self.call_cli(&prompt).await?;
+        read_document(&file_path)
     }
 
     async fn resolve_disambiguation(&self, ctx: DisambigContext) -> Result<DisambigResult> {
+        let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
+            .context("Failed to serialize wiki index")?;
+
         let prompt = format!(
-            r#"Two documents share the same title and must be separated.
+            r#"Resolve disambiguation for title '{}'. Write 3 files:
 
-[Document A]
-Title: {}
-Context from linking documents:
+1. DISAMBIGUATION PAGE: concepts/{}-disambiguation.md
+2. CONCEPT A: concepts/ConceptA.md (use appropriate name)
+3. CONCEPT B: concepts/ConceptB.md (use appropriate name)
+
+[Wiki Context]
+Language: {}
+Wiki index (title, tags, summary):
 {}
 
-[Document B]
-Title: {}
 Context from linking documents:
-{}
+- Group A: {}
+- Group B: {}
 
-Instructions:
-1. Determine appropriate qualifiers for each concept (e.g. "Apple (Fruit)", "Apple (Company)")
-2. Decide which existing [[{}]] links belong to A vs B based on context
-3. Return JSON only, no other text:
-{{
-  "concept_a": {{ "new_title": "...", "frontmatter": "...", "body": "..." }},
-  "concept_b": {{ "new_title": "...", "frontmatter": "...", "body": "..." }},
-  "disambig": {{ "frontmatter": "...", "body": "..." }},
-  "link_updates": [ {{ "file": "relative/path.md", "from": "{}", "to": "Apple (Company)" }} ]
-}}
+[Instructions for each file]
+- Use YAML frontmatter: title, aliases, tags, status, language, created
+- Body: 300–500 words each, relevant content based on context
+- Use [[wikilinks]] to link between related documents
+- Search web for accurate information
+
+After writing all 3 files, output JSON only:
+{{"disambig_path": "concepts/{}-disambiguation.md", "concept_a_path": "concepts/ConceptA.md", "concept_b_path": "concepts/ConceptB.md", "link_updates": []}}
 "#,
-            ctx.title, ctx.context_a.join("\n"),
-            ctx.title, ctx.context_b.join("\n"),
-            ctx.title, ctx.title
+            ctx.title,
+            ctx.title,
+            ctx.language,
+            wiki_index_json,
+            ctx.context_a.join("; "),
+            ctx.context_b.join("; "),
+            ctx.title
         );
 
-        let response = self.call_api(&prompt).await?;
-
-        // Parse JSON response
+        let response = self.call_cli(&prompt).await?;
         parse_disambig_response(&response)
     }
 
@@ -165,11 +171,7 @@ Suggest ONE new concept that:
 4. Would naturally extend the knowledge graph
 
 Return JSON only, no other text:
-{{
-  "title": "Concept Name",
-  "reason": "Brief explanation why this concept fits",
-  "related_existing": ["Existing Doc 1", "Existing Doc 2"]
-}}
+{{"title": "Concept Name", "reason": "Brief explanation why this concept fits", "related_existing": ["Existing Doc 1", "Existing Doc 2"]}}
 "#,
             ctx.language,
             ctx.interests.join(", "),
@@ -178,13 +180,13 @@ Return JSON only, no other text:
             wiki_index_json
         );
 
-        let response = self.call_api(&prompt).await?;
+        let response = self.call_cli(&prompt).await?;
         parse_suggestion_response(&response)
     }
 }
 
-fn parse_generated_document(content: &str, language: &str) -> Result<Document> {
-    // Extract frontmatter between --- markers
+/// Parse a document from file content
+fn parse_document_content(content: &str) -> Result<Document> {
     let content = content.trim();
 
     if !content.starts_with("---") {
@@ -198,7 +200,6 @@ fn parse_generated_document(content: &str, language: &str) -> Result<Document> {
     let yaml_content = &rest[..end];
     let body = rest[end + 3..].trim().to_string();
 
-    // Parse YAML fields
     let fields = parse_yaml_simple(yaml_content)?;
 
     let title = fields.get("title")
@@ -217,12 +218,16 @@ fn parse_generated_document(content: &str, language: &str) -> Result<Document> {
         .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
         .unwrap_or_else(|| chrono::Local::now().naive_local().date());
 
+    let language = fields.get("language")
+        .cloned()
+        .unwrap_or_else(|| "en".to_string());
+
     Ok(Document {
         title,
         aliases,
         tags,
         status: Status::Published,
-        language: language.to_string(),
+        language,
         created,
         relates: None,
         disambig: None,
@@ -276,7 +281,6 @@ fn parse_yaml_simple(yaml: &str) -> Result<std::collections::HashMap<String, Str
 }
 
 fn parse_disambig_response(content: &str) -> Result<DisambigResult> {
-    // Try to extract JSON from the response
     let content = content.trim();
 
     // Remove markdown code fences if present
@@ -293,36 +297,53 @@ fn parse_disambig_response(content: &str) -> Result<DisambigResult> {
     let json: serde_json::Value = serde_json::from_str(content)
         .context("Failed to parse disambiguation JSON response")?;
 
-    let concept_a = parse_disambig_concept(&json["concept_a"])?;
-    let concept_b = parse_disambig_concept(&json["concept_b"])?;
-    let disambig = parse_disambig_concept(&json["disambig"])?;
+    let disambig_path = json["disambig_path"].as_str()
+        .context("Missing disambig_path")?;
+    let concept_a_path = json["concept_a_path"].as_str()
+        .context("Missing concept_a_path")?;
+    let concept_b_path = json["concept_b_path"].as_str()
+        .context("Missing concept_b_path")?;
 
-    let link_updates = json["link_updates"]
+    // Read the written files
+    let disambig_doc = read_document(std::path::Path::new(disambig_path))?;
+    let concept_a = read_document(std::path::Path::new(concept_a_path))?;
+    let concept_b = read_document(std::path::Path::new(concept_b_path))?;
+
+    let link_updates: Vec<crate::adapter::LinkUpdate> = json["link_updates"]
         .as_array()
-        .context("Missing link_updates array")?
-        .iter()
-        .map(|v| {
-            Ok(crate::adapter::LinkUpdate {
-                source_file: v["file"].as_str().context("Missing file field")?.to_string(),
-                from: v["from"].as_str().context("Missing from field")?.to_string(),
-                to: v["to"].as_str().context("Missing to field")?.to_string(),
-            })
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(crate::adapter::LinkUpdate {
+                        source_file: v["file"].as_str()?.to_string(),
+                        from: v["from"].as_str()?.to_string(),
+                        to: v["to"].as_str()?.to_string(),
+                    })
+                })
+                .collect()
         })
-        .collect::<Result<Vec<_>>>()?;
+        .unwrap_or_default();
 
     Ok(DisambigResult {
-        concept_a,
-        concept_b,
-        disambig,
+        concept_a: crate::adapter::DisambigConcept {
+            new_title: concept_a.title.clone(),
+            frontmatter: format!("title: \"{}\"\naliases: {:?}\ntags: {:?}\nstatus: published\nlanguage: {}\ncreated: {}",
+                concept_a.title, concept_a.aliases, concept_a.tags, concept_a.language, concept_a.created),
+            body: concept_a.body,
+        },
+        concept_b: crate::adapter::DisambigConcept {
+            new_title: concept_b.title.clone(),
+            frontmatter: format!("title: \"{}\"\naliases: {:?}\ntags: {:?}\nstatus: published\nlanguage: {}\ncreated: {}",
+                concept_b.title, concept_b.aliases, concept_b.tags, concept_b.language, concept_b.created),
+            body: concept_b.body,
+        },
+        disambig: crate::adapter::DisambigConcept {
+            new_title: disambig_doc.title.clone(),
+            frontmatter: format!("title: \"{}\"\naliases: {:?}\ntags: {:?}\nstatus: disambiguation\nlanguage: {}\ncreated: {}",
+                disambig_doc.title, disambig_doc.aliases, disambig_doc.tags, disambig_doc.language, disambig_doc.created),
+            body: disambig_doc.body,
+        },
         link_updates,
-    })
-}
-
-fn parse_disambig_concept(json: &serde_json::Value) -> Result<crate::adapter::DisambigConcept> {
-    Ok(crate::adapter::DisambigConcept {
-        new_title: json["new_title"].as_str().context("Missing new_title")?.to_string(),
-        frontmatter: json["frontmatter"].as_str().context("Missing frontmatter")?.to_string(),
-        body: json["body"].as_str().context("Missing body")?.to_string(),
     })
 }
 

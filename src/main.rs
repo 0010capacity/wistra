@@ -1118,8 +1118,8 @@ async fn run_wiki_growth(
         }
     }
 
-    // Initialize adapter
-    let adapter = adapter::claude::ClaudeAdapter::new(global_config.claude_api_key.clone());
+    // Initialize adapter (Claude Code CLI)
+    let adapter = adapter::claude::ClaudeAdapter::new();
 
     // Progress bar
     let pb = if !quiet {
@@ -1145,6 +1145,7 @@ async fn run_wiki_growth(
             planner::PlanAction::Stub => {
                 let ctx = adapter::GenerationContext {
                     concept_name: slot.target.clone(),
+                    concepts_dir: wiki_config.concepts_dir(),
                     related_docs: find_related_docs(&report, &slot.target),
                     wiki_index: report.wiki_index.clone(),
                     language: global_config.language.clone(),
@@ -1224,6 +1225,7 @@ async fn run_wiki_growth(
                         // Generate the suggested concept
                         let gen_ctx = adapter::GenerationContext {
                             concept_name: suggestion.title.clone(),
+                            concepts_dir: wiki_config.concepts_dir(),
                             related_docs: suggestion.related_existing.clone(),
                             wiki_index: report.wiki_index.clone(),
                             language: global_config.language.clone(),

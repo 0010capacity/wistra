@@ -1,6 +1,6 @@
 use crate::config::{GlobalConfig, INTEREST_DOMAINS, LANGUAGES};
 use anyhow::{Context, Result};
-use dialoguer::{Input, Select, MultiSelect, Password, Confirm};
+use dialoguer::{Input, Select, MultiSelect, Confirm};
 
 /// Run the config modification wizard
 pub fn run_config(onboard: bool) -> Result<()> {
@@ -18,7 +18,6 @@ pub fn run_config(onboard: bool) -> Result<()> {
         let options = vec![
             "Wiki path",
             "Language",
-            "Claude API key",
             "Daily concept count",
             "Interest domains",
             "Save and exit",
@@ -66,18 +65,6 @@ pub fn run_config(onboard: bool) -> Result<()> {
                 config.language = LANGUAGES[language_idx].0.to_string();
             }
             2 => {
-                // API key
-                let api_key = Password::new()
-                    .with_prompt("Claude API key (leave empty to keep current)")
-                    .allow_empty_password(true)
-                    .interact()
-                    .context("Failed to read API key")?;
-
-                if !api_key.is_empty() {
-                    config.claude_api_key = api_key;
-                }
-            }
-            3 => {
                 // Daily count
                 let daily_count: usize = Input::new()
                     .with_prompt("Daily concept count")
@@ -87,7 +74,7 @@ pub fn run_config(onboard: bool) -> Result<()> {
 
                 config.daily_count = daily_count;
             }
-            4 => {
+            3 => {
                 // Interests
                 let defaults: Vec<bool> = (0..INTEREST_DOMAINS.len())
                     .map(|idx| config.interests.contains(&INTEREST_DOMAINS[idx].0.to_string()))
@@ -106,13 +93,13 @@ pub fn run_config(onboard: bool) -> Result<()> {
                     .map(|&idx| INTEREST_DOMAINS[idx].0.to_string())
                     .collect();
             }
-            5 => {
+            4 => {
                 // Save and exit
                 config.save()?;
                 println!("\n✅ Configuration saved!");
                 break;
             }
-            6 => {
+            5 => {
                 // Exit without saving
                 if Confirm::new()
                     .with_prompt("Discard changes?")

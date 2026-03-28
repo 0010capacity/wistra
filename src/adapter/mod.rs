@@ -8,6 +8,7 @@ use crate::types::{Document, WikiIndex};
 #[derive(Debug, Clone)]
 pub struct GenerationContext {
     pub concept_name: String,
+    pub concepts_dir: std::path::PathBuf,
     pub related_docs: Vec<String>,
     pub wiki_index: WikiIndex,
     pub language: String,

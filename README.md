@@ -105,7 +105,6 @@ You can also use [[Target|display text]].
 Global configuration is stored at `~/.wistra/config.toml`:
 
 ```toml
-claude_api_key = "sk-ant-..."
 wiki_path = "~/wiki"
 language = "en"
 interests = ["computer-science", "philosophy"]
@@ -116,7 +115,7 @@ Per-wiki configuration is stored at `<wiki>/.wistra/config.toml`.
 ## Requirements
 
 - Rust 1.70+
-- Claude API key (for AI-powered features)
+- Claude Code CLI (for AI-powered features)
 
 ## License
 

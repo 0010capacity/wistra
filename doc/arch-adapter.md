@@ -39,18 +39,28 @@ Used for suggesting new concepts based on interests.
 - `language`: Document body language
 - `tag_index`: Tag hierarchy
 
-## ClaudeAdapter Implementation
+## Claude CLI Adapter
 
-Current implementation uses Anthropic's Claude API:
+Current implementation uses Claude Code CLI installed on the user's machine:
 
-- **Endpoint**: `https://api.anthropic.com/v1/messages`
-- **Model**: Configurable (default: `claude-sonnet-4-20250514`)
-- **Max tokens**: 4096
-- **API key**: Stored securely using `secrecy` crate
+- **CLI**: `claude -p <prompt> --output-format text`
+- **Installation**: Claude Code CLI must be installed and authenticated
+- **API key**: Not required (CLI handles authentication)
+
+### CLI Installation
+
+```bash
+# Install Claude Code CLI
+npm install -g @anthropic-ai/claude-code
+
+# Authenticate
+claude auth
+```
 
 ## Future Adapters
 
 The trait design allows for future adapters:
+- Claude API (HTTP)
 - GPT (OpenAI)
 - Gemini (Google)
 - Local LLM (Ollama, llama.cpp)
