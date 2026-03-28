@@ -128,16 +128,36 @@ impl WikiConfig {
 
 /// Available interest domains
 pub const INTEREST_DOMAINS: &[(&str, &str)] = &[
+    // STEM
     ("science", "Science"),
     ("mathematics", "Mathematics"),
-    ("programming", "Programming"),
     ("computer-science", "Computer Science"),
+    ("programming", "Programming"),
+    ("technology", "Technology"),
+    // Humanities & Social Sciences
     ("history", "History"),
-    ("culture", "Culture"),
-    ("current-affairs", "Current Affairs"),
-    ("subculture", "Subculture"),
-    ("economics", "Economics"),
     ("philosophy", "Philosophy"),
+    ("psychology", "Psychology"),
+    ("economics", "Economics"),
+    ("politics", "Politics"),
+    ("law", "Law"),
+    ("geography", "Geography"),
+    ("language-linguistics", "Language & Linguistics"),
+    // Culture & Arts
+    ("culture", "Culture"),
+    ("subculture", "Subculture"),
+    ("current-affairs", "Current Affairs"),
+    ("arts", "Arts"),
+    ("design", "Design"),
+    // Applied & Professional
+    ("business-management", "Business & Management"),
+    ("education", "Education"),
+    ("health-medicine", "Health & Medicine"),
+    ("environment", "Environment"),
+    // Personal & Recreation
+    ("self-improvement", "Self-improvement"),
+    ("sports-recreation", "Sports & Recreation"),
+    ("religion-mythology", "Religion & Mythology"),
 ];
 
 /// Available languages

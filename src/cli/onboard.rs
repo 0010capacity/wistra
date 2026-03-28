@@ -60,6 +60,25 @@ pub fn run_onboard() -> Result<()> {
         .interact()
         .context("Failed to select cron option")? == 0;
 
+    // Step 6: Cron time (if cron enabled)
+    let (cron_hour, cron_minute) = if setup_cron {
+        let hour: u8 = Input::new()
+            .with_prompt("Hour (0-23)")
+            .default(9)
+            .interact_text()
+            .context("Failed to read cron hour")?;
+
+        let minute: u8 = Input::new()
+            .with_prompt("Minute (0-59)")
+            .default(0)
+            .interact_text()
+            .context("Failed to read cron minute")?;
+
+        (hour, minute)
+    } else {
+        (9, 0)
+    };
+
     // Build config
     let config = GlobalConfig {
         wiki_path: Some(wiki_path.clone()),
@@ -83,7 +102,7 @@ pub fn run_onboard() -> Result<()> {
     // Print cron line if requested
     if setup_cron {
         println!("\n📝 Add this line to your crontab (crontab -e):");
-        println!("    0 9 * * * wistra run --quiet --no-confirm");
+        println!("    {} {} * * * wistra run --quiet --no-confirm", cron_minute, cron_hour);
     }
 
     println!("\n🎉 Setup complete! Run `wistra run` to start growing your wiki.");
