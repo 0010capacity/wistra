@@ -3,7 +3,7 @@ pub mod graph;
 pub mod report;
 pub mod meta;
 
-pub use report::{ScanReport, DisambigCandidate};
+pub use report::{ScanReport, DisambigCandidate, StubCandidate};
 
 use crate::config::WikiConfig;
 use crate::types::{Document, LinkGraph, WikiIndex};
