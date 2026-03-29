@@ -1218,6 +1218,11 @@ async fn run_wiki_growth(
                 }
             }
             planner::PlanAction::Random => {
+                // Collect titles already generated in this session
+                let recently_generated: Vec<String> = generated_docs.iter()
+                    .map(|d| d.title.clone())
+                    .collect();
+
                 // Ask AI to suggest a concept based on interests
                 let ctx = SuggestionContext {
                     wiki_dir: wiki_path.clone(),
@@ -1225,6 +1230,7 @@ async fn run_wiki_growth(
                     interests: global_config.interests.clone(),
                     language: global_config.language.clone(),
                     tag_index: build_tag_index(&report),
+                    recently_generated,
                 };
 
                 match adapter.suggest_concept(ctx).await {

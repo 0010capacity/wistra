@@ -236,6 +236,15 @@ After writing all 3 files, output JSON only:
             .map(|e| e.title.as_str())
             .collect();
 
+        // Build exclusion list: existing + recently generated in this session
+        let excluded_concepts = if ctx.recently_generated.is_empty() {
+            existing_titles.join(", ")
+        } else {
+            format!("{} (existing), {} (generated this session)",
+                existing_titles.join(", "),
+                ctx.recently_generated.join(", "))
+        };
+
         let prompt = format!(
             r#"You are a knowledge graph curator. Suggest a new concept to add to a personal wiki.
 
@@ -243,7 +252,7 @@ After writing all 3 files, output JSON only:
 Language: {}
 User interests: {}
 Tag hierarchy: {}
-Existing concepts: {}
+Excluded concepts (DO NOT suggest these): {}
 Wiki index (title, tags, summary):
 {}
 
@@ -251,8 +260,11 @@ Wiki index (title, tags, summary):
 Suggest ONE new concept that:
 1. Relates to the user's interests
 2. Connects to multiple existing documents via [[wikilinks]]
-3. Is NOT already in the existing concepts list
+3. Is NOT in the excluded concepts list
 4. Would naturally extend the knowledge graph
+5. Is DIFFERENT from any concept generated earlier in this session
+
+Be creative and diverse. Avoid repeating similar concepts. Explore different domains within the user's interests.
 
 Return JSON only, no other text:
 {{"title": "Concept Name", "reason": "Brief explanation why this concept fits", "related_existing": ["Existing Doc 1", "Existing Doc 2"]}}
@@ -260,7 +272,7 @@ Return JSON only, no other text:
             ctx.language,
             ctx.interests.join(", "),
             ctx.tag_index,
-            existing_titles.join(", "),
+            excluded_concepts,
             wiki_index_json
         );
 

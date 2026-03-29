@@ -36,6 +36,8 @@ pub struct SuggestionContext {
     pub interests: Vec<String>,
     pub language: String,
     pub tag_index: String,
+    /// Concepts already generated in this session (to avoid duplicates)
+    pub recently_generated: Vec<String>,
 }
 
 /// Result of concept suggestion
