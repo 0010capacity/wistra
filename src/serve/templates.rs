@@ -524,25 +524,135 @@ pub fn not_found_template(title: &str) -> String {
     base_template("Not Found", &content)
 }
 
-/// Graph page (simple text-based for now)
+/// Graph page with interactive network visualization
 pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) -> String {
+    // Build nodes JSON array
+    let nodes_json: String = documents
+        .iter()
+        .map(|doc| {
+            format!(
+                r#"{{"id": "{}", "label": "{}", "title": "{}"}}"#,
+                doc.title.replace('"', "\\\""),
+                truncate_label(&doc.title, 20),
+                doc.title.replace('"', "\\\"")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    // Build edges JSON array
+    let edges_json: String = links
+        .iter()
+        .map(|(from, to)| {
+            format!(
+                r#"{{"from": "{}", "to": "{}"}}"#,
+                from.replace('"', "\\\""),
+                to.replace('"', "\\\"")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+
     let content = format!(
         r##"<article>
             <h1>Knowledge Graph</h1>
-            <p>Visualizing connections between {} documents.</p>
-            <div id="graph" style="width: 100%; height: 500px; background: var(--card); border-radius: 8px; margin-top: 1rem;">
-                <p style="padding: 2rem; text-align: center; color: var(--muted);">
-                    Graph visualization coming soon.<br>
-                    {} nodes, {} links.
-                </p>
-            </div>
-        </article>"##,
+            <p>Visualizing connections between {} documents. Click a node to view the page.</p>
+            <div id="graph" style="width: 100%; height: 600px; background: var(--card); border-radius: 8px; margin-top: 1rem; border: 1px solid var(--border);"></div>
+        </article>
+        <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+        <script>
+            (function() {{
+                const container = document.getElementById('graph');
+                const nodes = new vis.DataSet([
+                    {}
+                ]);
+                const edges = new vis.DataSet([
+                    {}
+                ]);
+                const data = {{ nodes, edges }};
+                const options = {{
+                    nodes: {{
+                        shape: 'dot',
+                        size: 16,
+                        font: {{
+                            size: 12,
+                            color: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#f0f0f0' : '#1a1a1a'
+                        }},
+                        borderWidth: 2,
+                        color: {{
+                            background: '#0066cc',
+                            border: '#004499',
+                            highlight: {{
+                                background: '#66b3ff',
+                                border: '#0066cc'
+                            }}
+                        }}
+                    }},
+                    edges: {{
+                        width: 1,
+                        color: {{ color: '#cccccc', opacity: 0.6 }},
+                        arrows: {{
+                            to: {{ enabled: true, scaleFactor: 0.5 }}
+                        }},
+                        smooth: {{ type: 'continuous' }}
+                    }},
+                    physics: {{
+                        stabilization: {{ iterations: 150 }},
+                        barnesHut: {{
+                            gravitationalConstant: -2000,
+                            springConstant: 0.04,
+                            springLength: 100
+                        }}
+                    }},
+                    interaction: {{
+                        hover: true,
+                        tooltipDelay: 200,
+                        zoomView: true,
+                        dragView: true
+                    }}
+                }};
+                const network = new vis.Network(container, data, options);
+
+                // Dark mode color update
+                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {{
+                    const color = e.matches ? '#f0f0f0' : '#1a1a1a';
+                    nodes.forEach((node) => {{
+                        nodes.update({{ id: node.id, font: {{ size: 12, color: color }} }});
+                    }});
+                }});
+
+                // Click to navigate
+                network.on('click', function(params) {{
+                    if (params.nodes.length > 0) {{
+                        const nodeId = params.nodes[0];
+                        window.location.href = '/page/' + encodeURIComponent(nodeId);
+                    }}
+                }});
+
+                // Change cursor on hover
+                network.on('hoverNode', function() {{
+                    container.style.cursor = 'pointer';
+                }});
+                network.on('blurNode', function() {{
+                    container.style.cursor = 'default';
+                }});
+            }})();
+        </script>"##,
         documents.len(),
-        documents.len(),
-        links.len()
+        nodes_json,
+        edges_json
     );
 
     base_template("Graph", &content)
+}
+
+/// Truncate label with ellipsis if too long
+fn truncate_label(s: &str, max_len: usize) -> String {
+    if s.len() > max_len {
+        format!("{}...", &s[..max_len])
+    } else {
+        s.to_string()
+    }
 }
 
 /// Document info for templates

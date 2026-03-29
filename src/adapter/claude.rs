@@ -126,13 +126,13 @@ Wiki index (title, tags, summary):
 [Writing Instructions]
 1. Create a Markdown file at the path above with YAML frontmatter
 2. Required frontmatter:
-   - title: English name
-   - aliases: List of alternative names (at least 2-3, include non-English names if relevant)
+   - title: Name in the specified language ({}) - use the SAME language as the body content
+   - aliases: List of alternative names (at least 2-3, include English name and other language variants)
    - tags: List of hierarchical tags using slash notation (e.g., philosophy/epistemology, science/methodology) - at least 3-5 tags
    - status: published
    - language: {}
    - created: YYYY-MM-DD
-3. Body: 300–800 words in the specified language
+3. Body: 300–800 words in the specified language ({})
 4. Use [[wikilinks]] to link to related docs: {}
 5. Use LaTeX for math ($inline$, $$block$$), fenced code blocks, blockquotes for citations
 6. Use Obsidian callout syntax for notes: > [!note]
@@ -157,6 +157,8 @@ After writing the file, output "OK" only.
             ctx.wiki_index.entries.len(),
             ctx.tag_index,
             wiki_index_json,
+            ctx.language,
+            ctx.language,
             ctx.language,
             ctx.related_docs.join(", ")
         );

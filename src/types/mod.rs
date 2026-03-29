@@ -56,8 +56,22 @@ impl Document {
     }
 
     /// Get the filename for this document
+    /// Sanitizes the title by removing quotes and other problematic characters
     pub fn filename(&self) -> String {
-        format!("{}.md", self.title)
+        let sanitized = self.title
+            .trim_matches('"')
+            .trim_matches('\'')
+            .replace('"', "")
+            .replace('\'', "")
+            .replace('/', "-")
+            .replace('\\', "-")
+            .replace(':', "-")
+            .replace('<', "-")
+            .replace('>', "-")
+            .replace('|', "-")
+            .replace('?', "")
+            .replace('*', "");
+        format!("{}.md", sanitized)
     }
 }
 
