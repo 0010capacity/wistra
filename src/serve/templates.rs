@@ -1,5 +1,7 @@
 /// HTML templates for the serve command
 
+use crate::serve::renderer::Heading;
+
 // ---------------------------------------------------------------------------
 // Lucide SVG icon constants
 // ---------------------------------------------------------------------------
@@ -20,25 +22,24 @@ const ICON_FILE_TEXT: &str = icon!("file-text", r#"<path d="M14.5 2H6a2 2 0 0 0-
 const ICON_TAG: &str = icon!("tag", r#"<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>"#);
 const ICON_SEARCH: &str = icon!("search", r#"<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>"#);
 const ICON_MOON: &str = icon!("moon", r#"<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>"#);
-const ICON_ARROW_RIGHT: &str = icon!("arrow-right", r#"<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>"#);
 const ICON_LAYOUT_GRID: &str = icon!("layout-grid", r#"<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>"#);
 const ICON_LIST: &str = icon!("list", r#"<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>"#);
-const ICON_X: &str = icon!("x", r#"<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>"#);
+const ICON_ARROW_RIGHT: &str = icon!("arrow-right", r#"<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>"#);
+const ICON_STAR: &str = icon!("star", r#"<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>"#);
+const ICON_FILE_PLUS: &str = icon!("file-plus", r#"<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>"#);
+const ICON_CIRCLE: &str = icon!("circle", r#"<circle cx="12" cy="12" r="10"/>"#);
 
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
 
-/// Build a navigation link with optional active state.
-pub fn nav_link(href: &str, label: &str, icon: &str, active: bool) -> String {
-    let active_class = if active { " nav-link-active" } else { "" };
-    format!(
-        r#"<a href="{}" class="nav-link{}">{}<span>{}</span></a>"#,
-        href,
-        active_class,
-        icon,
-        label
-    )
+/// Truncate label with ellipsis if too long
+fn truncate_label(s: &str, max_len: usize) -> String {
+    if s.len() > max_len {
+        format!("{}...", &s[..max_len])
+    } else {
+        s.to_string()
+    }
 }
 
 /// Wrap a tag string in a badge span.
@@ -74,7 +75,6 @@ pub fn base_template(
     outline_html: &str,
     main_content: &str,
 ) -> String {
-    // Helper: nav link helper to avoid repetition
     fn nav_item(href: &str, label: &str, icon: &str, active_nav: &str, current: &str) -> String {
         let active = if current == active_nav { " nav-link-active" } else { "" };
         format!(
@@ -254,6 +254,7 @@ pub fn base_template(
             min-width: 0;
             padding: 2rem 2.5rem;
         }}
+        /* ── Article ── */
         article {{
             max-width: 720px;
             margin: 0 auto;
@@ -402,7 +403,34 @@ pub fn base_template(
         article th {{ background: var(--accent-light); font-weight: 600; }}
         article img {{ max-width: 100%; height: auto; border-radius: 6px; }}
         article hr {{ border: none; border-top: 1px solid var(--border); margin: 2rem 0; }}
-        /* ── Lists on list pages ── */
+        /* ── Home page stats ── */
+        .stats-row {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }}
+        .stat-card {{
+            background: var(--accent-light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }}
+        .stat-card .stat-num {{
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--accent);
+            line-height: 1;
+        }}
+        .stat-card .stat-label {{
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        /* ── Recent docs list ── */
         .doc-list {{ list-style: none; padding: 0; }}
         .doc-list li {{
             padding: 0.75rem 0;
@@ -415,9 +443,116 @@ pub fn base_template(
             font-size: 0.8125rem;
             margin-top: 0.125rem;
         }}
-        /* ── Search results ── */
-        .search-results {{ padding: 1rem 0; }}
-        .search-results h2 {{ margin-bottom: 0.75rem; font-size: 1.125rem; }}
+        /* ── Document cards (grid/list view) ── */
+        .cards-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }}
+        .cards-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }}
+        .doc-card {{
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            text-decoration: none;
+            display: block;
+            transition: border-color 0.12s, box-shadow 0.12s;
+        }}
+        .doc-card:hover {{
+            border-color: var(--accent);
+            box-shadow: 0 2px 8px var(--shadow);
+        }}
+        .doc-card-title {{
+            font-weight: 600;
+            font-size: 0.9375rem;
+            color: var(--fg);
+            margin-bottom: 0.25rem;
+        }}
+        .doc-card-meta {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.375rem;
+        }}
+        .doc-card-summary {{
+            color: var(--muted);
+            font-size: 0.8125rem;
+            margin-top: 0.375rem;
+            line-height: 1.5;
+        }}
+        .cards-list .doc-card {{
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+        }}
+        .cards-list .doc-card .doc-card-title {{ margin-bottom: 0; }}
+        .cards-list .doc-card .doc-card-summary {{ display: none; }}
+        /* ── Filter bar ── */
+        .filter-bar {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }}
+        .filter-bar select, .filter-bar input {{
+            height: 36px;
+            padding: 0 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: var(--fg);
+            font-size: 0.875rem;
+        }}
+        .filter-bar select:focus, .filter-bar input:focus {{
+            outline: none;
+            border-color: var(--accent);
+        }}
+        .filter-bar .filter-label {{
+            color: var(--muted);
+            font-size: 0.8125rem;
+        }}
+        .view-toggle {{
+            margin-left: auto;
+            display: flex;
+            gap: 0.25rem;
+        }}
+        .view-toggle button {{
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--border);
+            background: var(--card);
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            transition: background 0.12s, color 0.12s;
+        }}
+        .view-toggle button:hover {{ background: var(--accent-light); color: var(--accent); }}
+        .view-toggle button.active {{ background: var(--accent-light); color: var(--accent); border-color: var(--accent); }}
+        .view-toggle button .icon {{ width: 16px; height: 16px; }}
+        /* ── Callout / summary box ── */
+        .callout {{
+            background: var(--accent-light);
+            border-left: 3px solid var(--accent);
+            padding: 0.75rem 1rem;
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 1.5rem;
+            color: var(--muted);
+            font-size: 0.9375rem;
+        }}
         /* ── Backlinks ── */
         .backlinks {{
             margin-top: 2.5rem;
@@ -438,6 +573,81 @@ pub fn base_template(
             border-radius: 999px;
             font-size: 0.8125rem;
             font-weight: 500;
+        }}
+        /* ── Tag cloud ── */
+        .tag-cloud {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }}
+        .tag-cloud a {{
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+        }}
+        .tag-cloud a:hover {{ background: var(--accent-light); color: var(--accent); border-color: var(--accent); }}
+        /* ── Quick links section ── */
+        .quick-links {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }}
+        .quick-link {{
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--fg);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background 0.12s, border-color 0.12s;
+        }}
+        .quick-link:hover {{ background: var(--accent-light); border-color: var(--accent); color: var(--accent); }}
+        .quick-link .icon {{ width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }}
+        /* ── Search results ── */
+        .search-bar-top {{
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }}
+        .search-bar-top input {{
+            flex: 1;
+            height: 44px;
+            padding: 0 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: var(--fg);
+            font-size: 1rem;
+        }}
+        .search-bar-top input:focus {{ outline: none; border-color: var(--accent); }}
+        .search-bar-top button {{
+            height: 44px;
+            padding: 0 1.25rem;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            cursor: pointer;
+        }}
+        .search-bar-top button:hover {{ background: var(--accent-hover); }}
+        .result-count {{
+            color: var(--muted);
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
         }}
         /* ── Footer ── */
         footer {{
@@ -471,6 +681,8 @@ pub fn base_template(
             .main {{ padding: 1rem; }}
             article {{ padding: 1.25rem; border-radius: 8px; }}
             article h1 {{ font-size: 1.5rem; }}
+            .stats-row {{ grid-template-columns: repeat(2, 1fr); }}
+            .cards-grid {{ grid-template-columns: 1fr; }}
             /* mobile nav bar */
             .mobile-nav {{
                 display: flex;
@@ -605,7 +817,6 @@ function toggleSheet(id, btn) {{
     const sheet = document.getElementById(id);
     const backdrop = document.getElementById('backdrop');
     const isOpen = sheet.classList.contains('open');
-    // Close all
     sheet.classList.remove('open');
     document.querySelectorAll('.mobile-nav-btn').forEach(b => b.classList.remove('active'));
     if (!isOpen) {{
@@ -645,20 +856,17 @@ function closeSheets() {{
 
     headings.forEach(h => {{
         if (!h.id) {{
-            h.id = h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            h.id = h.textContent.trim().toLowerCase().replace(/[^a-z0-9가-힣]+/g, '-');
         }}
         observer.observe(h);
     }});
 
-    // Copy IDs to TOC links
     tocLinks.forEach(a => {{
         const href = a.getAttribute('href');
         if (href && href.startsWith('#')) {{
             const id = href.slice(1);
             const target = document.getElementById(id);
-            if (!target) {{
-                a.style.display = 'none';
-            }}
+            if (!target) {{ a.style.display = 'none'; }}
         }}
     }});
 }})();
@@ -672,14 +880,11 @@ function closeSheets() {{
 </body>
 </html>"#,
         title = title,
-        // Nav links
         nav_home = nav_item("/", "Home", ICON_HOME, active_nav, "home"),
         nav_all = nav_item("/all", "All Pages", ICON_FILE_TEXT, active_nav, "all"),
         nav_tags = nav_item("/tags", "Tags", ICON_TAG, active_nav, "tags"),
         nav_graph = nav_item("/graph", "Graph", ICON_LAYOUT_GRID, active_nav, "graph"),
-        // Active flags for mobile nav
         home_active = if active_nav == "home" { "active" } else { "" },
-        // Content panels
         sidebar_html = sidebar_html,
         outline_html = outline_html,
         main_content = main_content,
@@ -687,326 +892,552 @@ function closeSheets() {{
 }
 
 // ---------------------------------------------------------------------------
-// Page templates — updated to use new base_template signature
+// Page templates
 // ---------------------------------------------------------------------------
 
-/// Home page with recent documents and stats
-pub fn home_template(documents: &[DocumentInfo]) -> String {
-    let recent: String = documents
+// Types from mod.rs — re-exported here for convenience within templates
+use crate::serve::{DocumentInfo, SearchResultInfo};
+
+/// Home page with stats, recent docs, and quick links.
+pub fn home_template(
+    recent: &[&DocumentInfo],
+    random: Option<&DocumentInfo>,
+    total: usize,
+    published: usize,
+    stubs: usize,
+    tag_count: usize,
+) -> String {
+    // ── Sidebar: recent docs ──
+    let recent_sidebar: String = recent
         .iter()
-        .take(10)
+        .take(8)
         .map(|doc| {
             format!(
-                r#"<li><a href="/page/{}">{}</a><div class="doc-list-meta">{} · {}</div></li>"#,
+                r#"<a href="/page/{}" class="nav-link"><span>{}</span></a>"#,
                 urlencoding::encode(&doc.title),
-                doc.title,
-                doc.status,
-                doc.created
+                truncate_label(&doc.title, 28)
             )
         })
-        .collect();
-
-    let main = format!(
-        r#"<article>
-            <h1>Welcome to Wistra</h1>
-            <p>Browse your personal knowledge base.</p>
-            <h2>Recent Documents</h2>
-            <ul class="doc-list">{}</ul>
-        </article>"#,
-        recent
-    );
-
-    base_template("Home", "home", "", "", &main)
-}
-
-/// Single document page
-pub fn page_template(
-    title: &str,
-    html_body: &str,
-    status: &str,
-    tags: &[String],
-    created: &str,
-    aliases: &[String],
-    backlinks: &[String],
-) -> String {
-    let tags_html: String = tags.iter().map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
-
-    let aliases_html = if aliases.is_empty() {
+        .collect::<Vec<_>>()
+        .join("\n");
+    let sidebar_html = if recent_sidebar.is_empty() {
         String::new()
     } else {
-        format!(r#"<span>Aliases: {}</span>"#, aliases.join(", "))
-    };
-
-    let backlinks_html = if backlinks.is_empty() {
-        String::new()
-    } else {
-        let links: String = backlinks
-            .iter()
-            .map(|t| format!(r#"<li><a href="/page/{}">{}</a></li>"#, urlencoding::encode(t), t))
-            .collect();
-        format!(
-            r##"<div class="backlinks">
-                <h3>Backlinks</h3>
-                <ul class="backlinks-list">{}</ul>
-            </div>"##,
-            links
-        )
-    };
-
-    let main = format!(
-        r#"<article>
-            <h1>{}</h1>
-            <div class="doc-meta">
-                <span class="badge badge-{}">{}</span>
-                <span>{}</span>
-                {}
-                <div style="margin-top:0.375rem;">{}</div>
-            </div>
-            {}
-            {}
-        </article>"##,
-        title,
-        status.to_lowercase(),
-        status,
-        created,
-        aliases_html,
-        tags_html,
-        html_body,
-        backlinks_html
-    );
-
-    // Build sidebar: tags list
-    let sidebar = if tags.is_empty() {
-        String::new()
-    } else {
-        let tags_section = tags
-            .iter()
-            .map(|t| {
-                format!(
-                    r#"<a href="/tag/{}" class="nav-link">{}<span>{}</span></a>"#,
-                    urlencoding::encode(t),
-                    ICON_TAG,
-                    t
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("");
         format!(
             r#"<div class="sidebar-section">
-                <div class="sidebar-title">Tags</div>
+                <div class="sidebar-title">Recent</div>
                 {}
             </div>"#,
-            tags_section
+            recent_sidebar
         )
     };
 
-    // Build outline: from h2/h3 headings in html_body
-    let outline = build_outline(html_body);
+    // ── Main: stats row ──
+    let stats = format!(
+        r#"<div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-num">{}</div>
+                <div class="stat-label">Total Docs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num">{}</div>
+                <div class="stat-label">Published</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num">{}</div>
+                <div class="stat-label">Stubs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num">{}</div>
+                <div class="stat-label">Tags</div>
+            </div>
+        </div>"#,
+        total, published, stubs, tag_count
+    );
 
-    base_template(title, "home", &sidebar, &outline, &main)
-}
-
-/// Build a table-of-contents outline HTML from rendered article HTML.
-fn build_outline(html_body: &str) -> String {
-    use std::collections::HashMap;
-
-    // Extract h2 and h3 from the HTML (simple regex-free approach)
-    let mut lines = Vec::new();
-    let mut in_tag = false;
-    let mut current_tag = String::new();
-    let mut current_text = String::new();
-    let mut level = 0;
-    let mut capturing = false;
-
-    for c in html_body.chars() {
-        if c == '<' {
-            in_tag = true;
-            capturing = false;
-            if current_tag.is_empty() && !current_text.is_empty() {
-                let trimmed = current_text.trim();
-                if !trimmed.is_empty() {
-                    lines.push((level, trimmed.to_string()));
-                }
-                current_text.clear();
-            }
-            current_tag.clear();
-        } else if c == '>' {
-            in_tag = false;
-            let tag = current_tag.trim().to_lowercase();
-            if tag.starts_with("h2") || tag.starts_with("h3") {
-                let lvl = if tag == "h2" { 2 } else { 3 };
-                level = lvl;
-                capturing = true;
-                current_text.clear();
-            }
-        } else if in_tag {
-            current_tag.push(c);
-        } else if capturing {
-            current_text.push(c);
-        }
-    }
-    if !current_text.trim().is_empty() {
-        lines.push((level, current_text.trim().to_string()));
-    }
-
-    if lines.is_empty() {
-        return String::new();
-    }
-
-    let items: String = lines
+    // ── Recent docs list ──
+    let recent_list: String = recent
         .iter()
-        .map(|(lvl, text)| {
-            let id = text
-                .to_lowercase()
-                .chars()
-                .filter(|c| c.is_alphanumeric())
-                .collect::<String>();
-            let cls = if *lvl == 3 { " toc-h3" } else { " toc-h2" };
+        .map(|doc| {
+            let tags_html: String = doc.tags.iter().take(3).map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
             format!(
-                r#"<li><a href="#{}" class="{}">{}</a></li>"#,
-                id, cls, text
+                r#"<li>
+                    <a href="/page/{}">{}</a>
+                    <div class="doc-list-meta">
+                        {} &middot; {} {}
+                    </div>
+                </li>"#,
+                urlencoding::encode(&doc.title),
+                doc.title,
+                status_badge(&doc.status),
+                doc.created,
+                tags_html
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
 
-    format!(
-        r#"<div class="outline-title">On This Page</div>
-        <ul class="outline-list">{}</ul>"#,
-        items
-    )
-}
+    // ── Random suggestion card ──
+    let random_card = if let Some(doc) = random {
+        format!(
+            r#"<div class="callout" style="margin-top:1.5rem;">
+                <strong>Suggested:</strong>
+                <a href="/page/{}">{}</a>
+                {}
+            </div>"#,
+            urlencoding::encode(&doc.title),
+            doc.title,
+            tag_badge(&doc.status)
+        )
+    } else {
+        String::new()
+    };
 
-/// All pages list
-pub fn all_pages_template(documents: &[DocumentInfo]) -> String {
-    let list: String = documents
-        .iter()
-        .map(|doc| {
-            format!(
-                r#"<li><a href="/page/{}">{}</a><div class="doc-list-meta">{} · {}</div></li>"#,
-                urlencoding::encode(&doc.title),
-                doc.title,
-                doc.status,
-                doc.created
-            )
-        })
-        .collect();
-
-    let main = format!(
-        r#"<article>
-            <h1>All Pages</h1>
-            <p>{} documents total.</p>
-            <ul class="doc-list">{}</ul>
-        </article>"#,
-        documents.len(),
-        list
+    // ── Quick links ──
+    let quick_links = format!(
+        r#"<div class="quick-links">
+            <a href="/all" class="quick-link">{ICON_FILE_TEXT}<span>Browse All</span></a>
+            <a href="/tags" class="quick-link">{ICON_TAG}<span>Tags</span></a>
+            <a href="/graph" class="quick-link">{ICON_LAYOUT_GRID}<span>Knowledge Graph</span></a>
+            <a href="/search?q=" class="quick-link">{ICON_SEARCH}<span>Search</span></a>
+        </div>"#
     );
 
-    base_template("All Pages", "all", "", "", &main)
+    let main_content = format!(
+        r#"<article>
+            <h1>Welcome to Your Wiki</h1>
+            <p>Browse your personal knowledge base. {} documents available.</p>
+            {}
+            <h2 style="margin-top:2rem;">Recent Documents</h2>
+            <ul class="doc-list">{}</ul>
+            {}
+            {}
+        </article>"#,
+        total,
+        stats,
+        recent_list,
+        random_card,
+        quick_links
+    );
+
+    base_template("Home", "home", &sidebar_html, "", &main_content)
 }
 
-/// Tags page
+/// Single document page with TOC, metadata, and backlinks.
+pub fn page_template(
+    doc: &DocumentInfo,
+    html_body: &str,
+    headings: &[Heading],
+) -> String {
+    // ── Tags HTML ──
+    let tags_html: String = doc.tags.iter().map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
+
+    // ── Aliases ──
+    let aliases_html = if doc.aliases.is_empty() {
+        String::new()
+    } else {
+        format!(r#"<span style="color:var(--muted);font-size:0.8125rem;">aka {}</span>"#, doc.aliases.join(", "))
+    };
+
+    // ── Callout (summary) ──
+    let callout = if doc.summary.is_empty() {
+        String::new()
+    } else {
+        format!(r#"<div class="callout">{}</div>"#, doc.summary)
+    };
+
+    // ── Backlinks ──
+    let backlinks_html = if doc.backlinks.is_empty() {
+        String::new()
+    } else {
+        let links: String = doc.backlinks
+            .iter()
+            .map(|t| format!(r#"<li><a href="/page/{}">{}</a></li>"#, urlencoding::encode(t), t))
+            .collect();
+        format!(
+            r##"<div class="backlinks">
+                <h3>Backlinks ({})</h3>
+                <ul class="backlinks-list">{}</ul>
+            </div>"##,
+            doc.backlinks.len(),
+            links
+        )
+    };
+
+    // ── Main content ──
+    let main_content = format!(
+        r#"<article>
+            <h1>{}</h1>
+            <div class="doc-meta">
+                {} {}
+                <span>{}</span>
+                {}
+                {}
+            </div>
+            {}
+            {}
+            {}
+        </article>"##,
+        doc.title,
+        status_badge(&doc.status),
+        doc.created,
+        aliases_html,
+        tags_html,
+        callout,
+        html_body,
+        backlinks_html
+    );
+
+    // ── Sidebar: nav links to same tag pages ──
+    let sidebar_tags: String = doc.tags
+        .iter()
+        .map(|t| {
+            format!(
+                r#"<a href="/tag/{}" class="nav-link">{}<span>{}</span></a>"#,
+                urlencoding::encode(t),
+                ICON_TAG,
+                t
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let sidebar_html = if doc.tags.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<div class="sidebar-section">
+                <div class="sidebar-title">Tags</div>
+                {}
+            </div>"#,
+            sidebar_tags
+        )
+    };
+
+    // ── Outline: TOC from headings ──
+    let outline_items: String = headings
+        .iter()
+        .map(|h| {
+            let cls = if h.level == 3 { "toc-h3" } else { "toc-h2" };
+            format!(
+                r#"<li><a href="#{}" class="{}">{}</a></li>"#,
+                h.id, cls, h.text
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let outline_html = if headings.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<div class="outline-title">On This Page</div>
+<ul class="outline-list">{}</ul>"#,
+            outline_items
+        )
+    };
+
+    base_template(&doc.title, "home", &sidebar_html, &outline_html, &main_content)
+}
+
+/// All pages listing with filter bar and grid/list toggle.
+pub fn all_pages_template(
+    docs: &[DocumentInfo],
+    view: &str,
+    status_filter: Option<&str>,
+    tag_filter: Option<&str>,
+    q_filter: Option<&str>,
+) -> String {
+    let is_grid = view == "grid";
+
+    // ── Filter bar ──
+    let filter_bar = format!(
+        r#"<div class="filter-bar">
+            <span class="filter-label">Filter:</span>
+            <select onchange="updateQueryParam('status', this.value)">
+                <option value="">All Status</option>
+                <option value="published" {}>Published</option>
+                <option value="stub" {}>Stub</option>
+                <option value="disambiguation" {}>Disambiguation</option>
+            </select>
+            <select onchange="updateQueryParam('tag', this.value)">
+                <option value="">All Tags</option>
+            </select>
+            <input type="text" id="search-input" placeholder="Search title..."
+                value="{}"
+                onkeydown="if(event.key==='Enter'){{updateQueryParam('q',document.getElementById('search-input').value)}}">
+            <div class="view-toggle">
+                <button class="active" onclick="setView('grid', this)" title="Grid view">
+                    <span class="icon">{ICON_LAYOUT_GRID}</span>
+                </button>
+                <button onclick="setView('list', this)" title="List view">
+                    <span class="icon">{ICON_LIST}</span>
+                </button>
+            </div>
+        </div>
+        <script>
+        function updateQueryParam(key, value) {{
+            const url = new URL(window.location.href);
+            if (value) url.searchParams.set(key, value);
+            else url.searchParams.delete(key);
+            window.location.href = url.toString();
+        }}
+        function setView(v, btn) {{
+            updateQueryParam('view', v);
+        }}
+        // Sync active state on load
+        (function() {{
+            const isGrid = '{}' === 'grid';
+            const btns = document.querySelectorAll('.view-toggle button');
+            btns.forEach(b => b.classList.remove('active'));
+            if (isGrid) btns[0].classList.add('active');
+            else btns[1].classList.add('active');
+        }})();
+        </script>"#,
+        if status_filter == Some("published") { "selected" } else { "" },
+        if status_filter == Some("stub") { "selected" } else { "" },
+        if status_filter == Some("disambiguation") { "selected" } else { "" },
+        q_filter.unwrap_or(""),
+        ICON_LAYOUT_GRID,
+        ICON_LIST,
+        view
+    );
+
+    // ── Document cards ──
+    let card_view_class = if is_grid { "cards-grid" } else { "cards-list" };
+    let cards: String = docs
+        .iter()
+        .map(|d| {
+            let tags_html: String = d.tags.iter().take(3).map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
+            format!(
+                r#"<a href="/page/{}" class="doc-card">
+                    <div class="doc-card-title">{}</div>
+                    <div class="doc-card-meta">
+                        {} <span style="color:var(--muted);font-size:0.8125rem;">{}</span>
+                        {}
+                    </div>
+                    <div class="doc-card-summary">{}</div>
+                </a>"#,
+                urlencoding::encode(&d.title),
+                d.title,
+                status_badge(&d.status),
+                d.created,
+                tags_html,
+                truncate_label(&d.summary, 100)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let doc_count_note = format!(r#"<p style="color:var(--muted);font-size:0.875rem;margin-bottom:0.5rem;">{} documents</p>"#, docs.len());
+
+    let main_content = format!(
+        r#"<article>
+            <h1>All Pages</h1>
+            {}
+            {}
+            <div class="{}">{}</div>
+        </article>"#,
+        filter_bar,
+        doc_count_note,
+        card_view_class,
+        cards
+    );
+
+    // Sidebar: recent docs
+    let sidebar_recent: String = docs.iter().take(8).map(|d| {
+        format!(
+            r#"<a href="/page/{}" class="nav-link"><span>{}</span></a>"#,
+            urlencoding::encode(&d.title),
+            truncate_label(&d.title, 28)
+        )
+    }).collect::<Vec<_>>().join("\n");
+    let sidebar_html = if sidebar_recent.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<div class="sidebar-section">
+                <div class="sidebar-title">Recent</div>
+                {}
+            </div>"#,
+            sidebar_recent
+        )
+    };
+
+    base_template("All Pages", "all", &sidebar_html, "", &main_content)
+}
+
+/// Search results page.
+pub fn search_results_template(query: &str, results: &[SearchResultInfo]) -> String {
+    let search_bar = format!(
+        r#"<div class="search-bar-top">
+            <input type="text" id="q-input" value="{}" placeholder="Search documents..." autofocus>
+            <button onclick="window.location.href='/search?q='+encodeURIComponent(document.getElementById('q-input').value)">
+                Search
+            </button>
+        </div>"#,
+        query
+    );
+
+    let result_count = if results.is_empty() {
+        r#"<p style="color:var(--muted);font-size:0.9375rem;">No results found. Try different keywords.</p>"#.to_string()
+    } else {
+        format!(
+            r#"<p class="result-count">{} result{} for "{}"</p>"#,
+            results.len(),
+            if results.len() == 1 { "" } else { "s" },
+            query
+        )
+    };
+
+    let match_badge = |mt: &str| -> String {
+        let (cls, label) = match mt {
+            "title" => ("badge-published", "Title"),
+            "content" => ("badge-stub", "Content"),
+            "tag" => ("badge-disambiguation", "Tag"),
+            "alias" => ("", "Alias"),
+            _ => ("", mt),
+        };
+        if cls.is_empty() {
+            format!(r#"<span>{}</span>"#, label)
+        } else {
+            format!(r#"<span class="badge {}">{}</span>"#, cls, label)
+        }
+    };
+
+    let cards: String = results
+        .iter()
+        .map(|r| {
+            let tags_html: String = r.tags.iter().take(3).map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
+            format!(
+                r#"<a href="/page/{}" class="doc-card">
+                    <div class="doc-card-title">{}</div>
+                    <div class="doc-card-meta">
+                        {} {}
+                    </div>
+                    <div class="doc-card-summary">{}</div>
+                </a>"#,
+                urlencoding::encode(&r.title),
+                r.title,
+                match_badge(&r.match_type),
+                tags_html,
+                truncate_label(&r.snippet, 150)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let main_content = format!(
+        r#"<article>
+            <h1>Search</h1>
+            {}
+            {}
+            <div class="cards-grid">{}</div>
+        </article>"#,
+        search_bar,
+        result_count,
+        cards
+    );
+
+    base_template(&format!("Search: {}", query), "home", "", "", &main_content)
+}
+
+/// Tags overview page with tag cloud.
 pub fn tags_template(tags: &[(String, usize)]) -> String {
-    let list: String = tags
+    if tags.is_empty() {
+        let main = r#"<article>
+            <h1>Tags</h1>
+            <p>No tags found.</p>
+        </article>"#.to_string();
+        return base_template("Tags", "tags", "", "", &main);
+    }
+
+    // Compute font size range based on doc count
+    let max_count = tags.iter().map(|(_, c)| *c).max().unwrap_or(1);
+    let tag_cloud: String = tags
         .iter()
         .map(|(tag, count)| {
+            // Scale font size from 0.8125rem (min) to 1.25rem (max)
+            let ratio = (*count as f64) / (max_count as f64);
+            let size = 0.8125 + (ratio * 0.4375);
             format!(
-                r#"<li><a href="/tag/{}">{}</a><div class="doc-list-meta">{} documents</div></li>"#,
+                r#"<a href="/tag/{}" style="font-size:{}rem;">{} <span style="font-size:0.75rem;opacity:0.7;">({})</span></a>"#,
                 urlencoding::encode(tag),
+                size,
                 tag,
                 count
             )
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    let main = format!(
+    let main_content = format!(
         r#"<article>
             <h1>Tags</h1>
-            <ul class="doc-list">{}</ul>
+            <p>Browse {} unique tags across your wiki.</p>
+            <div class="tag-cloud">{}</div>
         </article>"#,
-        list
+        tags.len(),
+        tag_cloud
     );
 
-    base_template("Tags", "tags", "", "", &main)
+    base_template("Tags", "tags", "", "", &main_content)
 }
 
-/// Documents by tag
-pub fn tag_page_template(tag: &str, documents: &[DocumentInfo]) -> String {
-    let list: String = documents
+/// Documents filtered by a specific tag.
+pub fn tag_page_template(tag: &str, docs: &[DocumentInfo]) -> String {
+    let cards: String = docs
         .iter()
-        .map(|doc| {
+        .map(|d| {
+            let tags_html: String = d.tags.iter().take(3).map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
             format!(
-                r#"<li><a href="/page/{}">{}</a></li>"#,
-                urlencoding::encode(&doc.title),
-                doc.title
+                r#"<a href="/page/{}" class="doc-card">
+                    <div class="doc-card-title">{}</div>
+                    <div class="doc-card-meta">
+                        {} <span style="color:var(--muted);font-size:0.8125rem;">{}</span>
+                        {}
+                    </div>
+                    <div class="doc-card-summary">{}</div>
+                </a>"#,
+                urlencoding::encode(&d.title),
+                d.title,
+                status_badge(&d.status),
+                d.created,
+                tags_html,
+                truncate_label(&d.summary, 100)
             )
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    let main = format!(
+    let count_note = format!(r#"<p style="color:var(--muted);font-size:0.875rem;margin-bottom:1rem;">{} document{}</p>"#,
+        docs.len(),
+        if docs.len() == 1 { "" } else { "s" }
+    );
+
+    let main_content = format!(
         r#"<article>
             <h1>Tag: {}</h1>
-            <p>{} documents</p>
-            <ul class="doc-list">{}</ul>
+            {}
+            <div class="cards-grid">{}</div>
         </article>"#,
         tag,
-        documents.len(),
-        list
+        count_note,
+        cards
     );
 
-    base_template(&format!("Tag: {}", tag), "tags", "", "", &main)
-}
-
-/// Search results
-pub fn search_results_template(query: &str, results: &[SearchResult]) -> String {
-    let results_html = if results.is_empty() {
-        r#"<p>No results found.</p>"#.to_string()
-    } else {
-        results
-            .iter()
-            .map(|r| {
-                format!(
-                    r#"<li><a href="/page/{}">{}</a><div class="doc-list-meta">{}</div></li>"#,
-                    urlencoding::encode(&r.title),
-                    r.title,
-                    r.match_type
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("")
-    };
-
-    let main = format!(
-        r#"<article>
-            <h1>Search: "{}"</h1>
-            <p>{} results</p>
-            <ul class="doc-list">{}</ul>
-        </article>"#,
-        query,
-        results.len(),
-        results_html
+    // Sidebar: nav + recent docs
+    let sidebar_html = format!(
+        r#"<div class="sidebar-section">
+            <div class="sidebar-title">Tags</div>
+            <a href="/tags" class="nav-link">{}<span>All Tags</span></a>
+        </div>"#,
+        ICON_TAG
     );
 
-    base_template(&format!("Search: {}", query), "home", "", "", &main)
+    base_template(&format!("Tag: {}", tag), "tags", &sidebar_html, "", &main_content)
 }
 
-/// 404 page
-pub fn not_found_template(title: &str) -> String {
-    let main = format!(
-        r#"<article>
-            <h1>Not Found</h1>
-            <p>The page "{}" does not exist.</p>
-            <p><a href="/">Return home</a></p>
-        </article>"#,
-        title
-    );
-
-    base_template("Not Found", "home", "", "", &main)
-}
-
-/// Graph page with interactive network visualization
+/// Graph page with interactive network visualization.
 pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) -> String {
-    // Build nodes JSON array
     let nodes_json: String = documents
         .iter()
         .map(|doc| {
@@ -1020,7 +1451,6 @@ pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) ->
         .collect::<Vec<_>>()
         .join(",\n");
 
-    // Build edges JSON array
     let edges_json: String = links
         .iter()
         .map(|(from, to)| {
@@ -1033,44 +1463,48 @@ pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) ->
         .collect::<Vec<_>>()
         .join(",\n");
 
-    let main = format!(
-        r#"<article>
-            <h1>Knowledge Graph</h1>
-            <p>Visualizing connections between {0} documents. Click a node to view the page.</p>
-            <div id="graph" style="width:100%;height:500px;background:var(--card);border-radius:8px;margin-top:1rem;border:1px solid var(--border);"></div>
-        </article>
+    // Full-width graph: override layout via inline style wrapper
+    let main_content = format!(
+        r#"<div id="graph-wrap" style="padding:1.5rem;max-width:100%;">
+            <h1 style="margin-bottom:0.5rem;">Knowledge Graph</h1>
+            <p style="color:var(--muted);font-size:0.9375rem;margin-bottom:1.5rem;">
+                Visualizing connections between {} documents. Click a node to open the page.
+            </p>
+            <div id="graph" style="width:100%;height:calc(100vh - 200px);min-height:400px;border-radius:10px;overflow:hidden;"></div>
+        </div>
         <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
         <script>
         (function() {{
             var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             var nodeColor = isDark ? {{ background: '#d97706', border: '#fbbf24' }} : {{ background: '#b45309', border: '#92400e' }};
-            var edgeColor = isDark ? 'rgba(248,250,252,0.2)' : 'rgba(28,25,23,0.2)';
+            var edgeColor = isDark ? 'rgba(248,250,252,0.15)' : 'rgba(28,25,23,0.15)';
             var textColor = isDark ? '#fafaf9' : '#1c1917';
 
             var container = document.getElementById('graph');
-            var nodes = new vis.DataSet([{1}]);
-            var edges = new vis.DataSet([{2}]);
+            var nodes = new vis.DataSet([{nodes}]);
+            var edges = new vis.DataSet([{edges}]);
             var data = {{ nodes: nodes, edges: edges }};
             var options = {{
                 nodes: {{
                     shape: 'dot',
-                    size: 16,
-                    font: {{ size: 12, color: textColor }},
+                    size: 18,
+                    font: {{ size: 13, color: textColor, face: 'system-ui,sans-serif' }},
                     borderWidth: 2,
-                    color: nodeColor
+                    color: nodeColor,
+                    shadow: {{ enabled: isDark, size: 8, x: 0, y: 2, color: 'rgba(0,0,0,0.4)' }}
                 }},
                 edges: {{
-                    width: 1,
-                    color: {{ color: edgeColor, opacity: 0.6 }},
+                    width: 1.5,
+                    color: {{ color: edgeColor, opacity: 0.7 }},
                     arrows: {{ to: {{ enabled: true, scaleFactor: 0.5 }} }},
                     smooth: {{ type: 'continuous' }}
                 }},
                 physics: {{
-                    stabilization: {{ iterations: 150 }},
+                    stabilization: {{ iterations: 200 }},
                     barnesHut: {{
-                        gravitationalConstant: -2000,
-                        springConstant: 0.04,
-                        springLength: 100
+                        gravitationalConstant: -3000,
+                        springConstant: 0.05,
+                        springLength: 120
                     }}
                 }},
                 interaction: {{
@@ -1090,46 +1524,61 @@ pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) ->
             network.on('hoverNode', function() {{ container.style.cursor = 'pointer'; }});
             network.on('blurNode', function() {{ container.style.cursor = 'default'; }});
 
-            // Re-apply dark mode colors on change
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {{
-                var dark = e.matches;
-                var nc = dark ? {{ background: '#d97706', border: '#fbbf24' }} : {{ background: '#b45309', border: '#92400e' }};
-                var ec = dark ? 'rgba(248,250,252,0.2)' : 'rgba(28,25,23,0.2)';
-                var tc = dark ? '#fafaf9' : '#1c1917';
-                nodes.forEach(function(node) {{
-                    nodes.update({{ id: node.id, font: {{ size: 12, color: tc }}, color: nc }});
+            // Update colors on dark mode toggle
+            var observer = new MutationObserver(function(mutations) {{
+                mutations.forEach(function(m) {{
+                    if (m.attributeName === 'class') {{
+                        var dark = document.documentElement.classList.contains('dark');
+                        var nc = dark ? {{ background: '#d97706', border: '#fbbf24' }} : {{ background: '#b45309', border: '#92400e' }};
+                        var ec = dark ? 'rgba(248,250,252,0.15)' : 'rgba(28,25,23,0.15)';
+                        var tc = dark ? '#fafaf9' : '#1c1917';
+                        nodes.forEach(function(n) {{ nodes.update({{ id: n.id, font: {{ size: 13, color: tc }}, color: nc }}); }});
+                    }}
                 }});
             }});
+            observer.observe(document.documentElement, {{ attributes: true }});
         }})();
         </script>"#,
         documents.len(),
-        nodes_json,
-        edges_json
+        nodes = nodes_json,
+        edges = edges_json
     );
 
-    base_template("Graph", "graph", "", "", &main)
+    // Override layout: hide sidebar/outline on graph page
+    // Pass empty sidebar/outline; the graph page is full-width
+    base_template("Knowledge Graph", "graph", "", "", &main_content)
 }
 
-/// Truncate label with ellipsis if too long
-fn truncate_label(s: &str, max_len: usize) -> String {
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len])
-    } else {
-        s.to_string()
-    }
-}
+/// 404 not found page.
+pub fn not_found_template(title: &str) -> String {
+    let main_content = format!(
+        r#"<article style="text-align:center;padding:3rem 2rem;">
+            <h1 style="font-size:4rem;margin-bottom:1rem;opacity:0.3;">404</h1>
+            <h1 style="margin-bottom:0.75rem;">Page Not Found</h1>
+            <p style="color:var(--muted);margin-bottom:1.5rem;">
+                The document "<strong>{}</strong>" does not exist or has been moved.
+            </p>
+            <a href="/" style="
+                display:inline-flex;align-items:center;gap:0.5rem;
+                padding:0.625rem 1.25rem;border-radius:8px;
+                background:var(--accent);color:#fff;font-weight:600;
+                text-decoration:none;
+            ">
+                Return Home
+            </a>
+            <div style="margin-top:2rem;">
+                <p style="color:var(--muted);font-size:0.875rem;margin-bottom:0.5rem;">Try searching instead:</p>
+                <div class="search-bar-top" style="max-width:400px;margin:0 auto;">
+                    <input type="text" id="q-input" placeholder="Search documents..."
+                        onkeydown="if(event.key==='Enter')window.location.href='/search?q='+encodeURIComponent(this.value)">
+                    <button onclick="var q=document.getElementById('q-input').value;window.location.href='/search?q='+encodeURIComponent(q)">
+                        Search
+                    </button>
+                </div>
+            </div>
+        </article>"#,
+        title
+    );
 
-/// Document info for templates
-#[derive(Debug, Clone)]
-pub struct DocumentInfo {
-    pub title: String,
-    pub status: String,
-    pub created: String,
-}
-
-/// Search result
-#[derive(Debug, Clone)]
-pub struct SearchResult {
-    pub title: String,
-    pub match_type: String,
+    base_template("Not Found", "home", "", "", &main_content)
 }

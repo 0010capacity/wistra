@@ -221,7 +221,7 @@ async fn handle_all_pages(query: AllPagesQuery, state: WikiState) -> Result<impl
     });
 
     let view = query.view.as_deref().unwrap_or("grid");
-    let html = templates::all_pages_template(&docs, view, &query);
+    let html = templates::all_pages_template(&docs, view, query.status.as_deref(), query.tag.as_deref(), query.q.as_deref());
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -253,11 +253,7 @@ async fn handle_graph(state: WikiState) -> Result<impl warp::Reply, warp::Reject
         .documents
         .values()
         .filter(|doc| doc.status != Status::Meta)
-        .map(|doc| DocumentInfo {
-            title: doc.title.clone(),
-            status: doc.status.to_string(),
-            created: doc.created.format("%Y-%m-%d").to_string(),
-        })
+        .map(|doc| doc_to_info(doc, &report))
         .collect();
 
     let links: Vec<(String, String)> = report
