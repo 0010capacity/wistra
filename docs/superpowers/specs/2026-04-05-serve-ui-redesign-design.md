@@ -54,25 +54,29 @@ Redesign the `wistra serve` web UI from a basic single-column layout to a 3-pane
 | `--topbar-bg` | `#0c0a09` |
 | `--topbar-fg` | `#fafaf9` |
 
-### Tag Badge Colors
+### Tag Badge Colors (Light / Dark)
 
-| Category | Background | Text |
-|---|---|---|
-| cs/* | `#fef3c7` | `#92400e` |
-| math* | `#e0e7ff` | `#3730a3` |
-| philosophy* | `#fce7f3` | `#9d174d` |
-| history* | `#d1fae5` | `#065f46` |
-| physics* | `#fee2e2` | `#991b1b` |
-| Default | `#f5f5f4` | `#44403c` |
+| Category | Background (Light) | Text (Light) | Background (Dark) | Text (Dark) |
+|---|---|---|---|---|
+| cs/* | `#fef3c7` | `#92400e` | `#451a03` | `#fbbf24` |
+| math* | `#e0e7ff` | `#3730a3` | `#1e1b4b` | `#a5b4fc` |
+| philosophy* | `#fce7f3` | `#9d174d` | `#500724` | `#f9a8d4` |
+| history* | `#d1fae5` | `#065f46` | `#022c22` | `#6ee7b7` |
+| physics* | `#fee2e2` | `#991b1b` | `#450a0a` | `#fca5a5` |
+| Default | `#f5f5f4` | `#44403c` | `#292524` | `#d6d3d1` |
 
-### Status Badge Colors
+### Status Badge Colors (Light / Dark)
 
-| Status | Background | Text |
-|---|---|---|
-| published | `#d1fae5` | `#065f46` |
-| stub | `#fef3c7` | `#92400e` |
-| disambiguation | `#e0e7ff` | `#3730a3` |
-| meta | `#f5f5f4` | `#78716c` |
+| Status | Background (Light) | Text (Light) | Background (Dark) | Text (Dark) |
+|---|---|---|---|---|
+| published | `#d1fae5` | `#065f46` | `#022c22` | `#6ee7b7` |
+| stub | `#fef3c7` | `#92400e` | `#451a03` | `#fbbf24` |
+| disambiguation | `#e0e7ff` | `#3730a3` | `#1e1b4b` | `#a5b4fc` |
+| meta | `#f5f5f4` | `#78716c` | `#292524` | `#d6d3d1` |
+
+## HTML Foundation
+
+The `<html>` tag uses `lang="ko"`. All text truncation (summaries, snippets) uses Rust's `char` boundary-aware truncation to avoid splitting multi-byte UTF-8 characters.
 
 ## Layout
 
@@ -92,7 +96,7 @@ Redesign the `wistra serve` web UI from a basic single-column layout to a 3-pane
 |  태그     |  [callout] 한줄 요약                    |  관련 문서      |
 |  그래프   |                                       |               |
 |          |  ## 개요                               | 백링크          |
-| 최근 방문  |  본문...                               |  ← 인공지능     |
+| 최근 생성  |  본문...                               |  ← 인공지능     |
 |  머신러닝  |                                       |  ← 딥러닝       |
 |  신경망   |  ## 주요 유형                           |               |
 |          |  [card grid]                           | 별칭            |
@@ -107,6 +111,10 @@ Redesign the `wistra serve` web UI from a basic single-column layout to a 3-pane
 - Main: scrollable, max-width 720px centered
 - Outline: fixed position, scrollable independently
 - Main has horizontal scroll boundary; sidebar/outline stay visible
+
+### Graph Page Layout
+
+The `/graph` page uses a **full-width layout** — sidebar and outline panels are hidden. The dark canvas fills the entire width below the top bar for maximum visualization space.
 
 ### Tablet (768px–1023px)
 
@@ -129,27 +137,30 @@ Redesign the `wistra serve` web UI from a basic single-column layout to a 3-pane
 **Main content:**
 - Stats row: 4 cards (전체 문서, Published, Stub, 태그) with counts
 - Two columns below:
-  - Left: "최근 추가" — last 5 documents with date and status badge
+  - Left: "최근 추가" — last 5 documents sorted by created date descending, with date and status badge
   - Right: "랜덤 탐색" — random document suggestion with summary (styled as amber callout card)
 
 **Right panel:**
 - 빠른 링크: Stub 목록, 고아 문서, 중복 — with counts and icons
 - 활동: Recent daily activity log (date + count)
 
+**Sidebar:** The "최근 방문" section is actually "최근 생성" — documents sorted by `created` date descending (server-side). No localStorage or cookie-based visit tracking.
+
 ### All Pages (/all)
 
 - Filter bar: 상태 dropdown, 태그 dropdown, 검색 input
-- View toggle: list (table) / grid (cards) — grid is active by default
+- **Filtering is server-side** — selecting a status or tag reloads the page with query parameters (`?status=stub&tag=math&q=검색어`). No client-side JavaScript filtering.
+- View toggle: list (table) / grid (cards) — grid is active by default. Toggle via query param `?view=grid|list`.
 - Table view: columns = 문서, 상태, 태그, 생성일
 - Grid view: cards with title, status, tags, date, summary snippet
-- Sortable by title, date, status
+- Sortable by title, date, status (via query param `?sort=title|date|status&order=asc|desc`)
 
 ### Page View (/page/:title)
 
 - Main: full document rendering (markdown → HTML with wikilinks, KaTeX)
 - Left sidebar: unchanged
 - Right panel:
-  - 목차 (Table of Contents): auto-generated from h2/h3 headings, scroll-spy highlight
+  - 목차 (Table of Contents): auto-generated from h2/h3 headings via `extract_headings()` (see Data Flow section), scroll-spy highlight
   - 백링크: list of linking documents with arrow icon
   - 별칭: aliases if present
 
@@ -157,7 +168,7 @@ Redesign the `wistra serve` web UI from a basic single-column layout to a 3-pane
 
 - Search bar at top (auto-focused, with query highlighted)
 - Result count with match type breakdown
-- Results: title (link), status badge, match type badge, content snippet, tags
+- Results: title (link), status badge, match type badge, content snippet (UTF-8 safe truncation at 120 chars), tags
 
 ### Tags (/tags)
 
@@ -171,7 +182,8 @@ Redesign the `wistra serve` web UI from a basic single-column layout to a 3-pane
 
 ### Graph (/graph)
 
-- Full-width dark background (#1c1917)
+- **Full-width layout** — no sidebar, no outline panel. Dark canvas fills entire width below top bar.
+- Background: `#1c1917`
 - vis-network with Warm Stone themed colors:
   - Nodes: amber (#d97706) for current, stone (#292524) for connected
   - Edges: muted stone (#44403c)
@@ -247,6 +259,7 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard',
 - Scrollable independently (same sticky behavior as sidebar)
 
 ### Callout (한줄 요약)
+- Data source: auto-extracted from first non-empty paragraph of document content (stripped of markdown formatting, truncated to 200 chars). Falls back to document title + " — 상세 내용을 확인하세요." if first paragraph is empty.
 - Background: `#fffbeb` (light) / `#451a03` (dark)
 - Border-left: `3px solid --accent`
 - Padding: 12px 16px
@@ -266,19 +279,177 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard',
 - Drag handle: 30px wide, 3px height, `background: --faint`, centered, 10px from top
 - Backdrop: semi-transparent overlay, tap to dismiss
 
+## Data Flow
+
+### Data Structures
+
+The following structs are passed from handlers to templates. Add these fields to existing types in `src/serve/mod.rs`:
+
+```rust
+// Extended document info for templates (used in home, all-pages, search, page)
+struct DocumentInfo {
+    title: String,
+    status: String,
+    tags: Vec<String>,
+    created: String,        // YYYY-MM-DD
+    summary: String,        // First paragraph, stripped, max 200 chars (UTF-8 safe)
+    aliases: Vec<String>,
+    backlinks: Vec<String>,
+}
+
+// Heading extracted for TOC
+struct Heading {
+    level: u8,              // 2 or 3
+    id: String,             // Slug for anchor: "개요" → "개요"
+    text: String,           // Heading text
+}
+
+// Search result with match metadata
+struct SearchResultInfo {
+    doc: DocumentInfo,
+    match_type: String,     // "title" | "content" | "tag" | "alias"
+    snippet: String,        // Context around match, max 120 chars (UTF-8 safe)
+}
+```
+
+### UTF-8 Safe Truncation
+
+All text truncation (summary, snippet) must be UTF-8 boundary safe. Use the existing `char_indices()` pattern:
+
+```rust
+fn truncate_utf8(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let boundary = s.char_indices()
+            .nth(max_chars)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..boundary])
+    }
+}
+```
+
+### TOC Generation
+
+`extract_headings()` function added to `renderer.rs`:
+
+```rust
+pub fn extract_headings(html: &str) -> Vec<Heading>
+```
+
+- Parses rendered HTML for `<h2>` and `<h3>` tags
+- Generates slug ID from heading text (Korean text used as-is, whitespace replaced with `-`)
+- Adds `id` attribute to heading tags in the rendered HTML
+- Returns ordered list of `Heading` structs
+
+### Callout Summary Extraction
+
+`extract_summary()` function added to `renderer.rs`:
+
+```rust
+pub fn extract_summary(content: &str, title: &str) -> String
+```
+
+- Takes raw markdown content and document title
+- Extracts first non-empty paragraph (ignoring headings, math blocks, code blocks)
+- Strips markdown formatting (wikilinks, bold, italic)
+- Truncates to 200 chars using `truncate_utf8()`
+- Falls back to `"{title} — 상세 내용을 확인하세요."` if no paragraph found
+
+### Graph Node Labels
+
+vis-network node labels use `truncate_utf8()` with max 8 chars. Korean text counts as single characters. Example: "머신러닝" = 4 chars (fits), "조건부 확률" = 6 chars (fits), "비선형동역학이론" = 8 chars (fits), "비선형동역학이론기초" = 10 chars → truncated to "비선형동역학이론...".
+
+### Filtering (All Pages)
+
+All filtering on `/all` page is **server-side** via query parameters:
+
+| Parameter | Values | Default |
+|---|---|---|
+| `status` | `published`, `stub`, `disambiguation`, `meta`, (empty = all) | all |
+| `tag` | any tag name, (empty = all) | all |
+| `q` | search string, matches title | (empty) |
+| `view` | `grid`, `list` | `grid` |
+| `sort` | `title`, `date`, `status` | `date` |
+| `order` | `asc`, `desc` | `desc` |
+
+Navigation generates full page reloads with updated query parameters. No client-side JavaScript filtering.
+
+### Recent Documents ("최근 추가")
+
+The sidebar section "최근 방문" is actually "최근 생성" (recently created). It shows the 5 most recently created documents sorted by `created` date descending. This is **server-side only** — no localStorage or client-side tracking.
+
+## JavaScript Boundary
+
+The UI is server-rendered HTML, but minimal inline `<script>` is allowed for three specific interactions:
+
+### 1. Mobile Bottom Sheet Toggle (~30 lines)
+
+```javascript
+function toggleSheet(id) {
+    var sheet = document.getElementById(id);
+    var backdrop = document.getElementById(id + '-backdrop');
+    sheet.classList.toggle('active');
+    backdrop.classList.toggle('active');
+}
+```
+
+- Two bottom sheets: `sidebar-sheet` and `outline-sheet`
+- Toggle buttons in mobile top bar call `toggleSheet()`
+- Backdrop tap dismisses the sheet
+- CSS classes handle visibility via `transform: translateY(100%)` → `translateY(0)`
+
+### 2. Scroll-Spy for TOC (~20 lines)
+
+```javascript
+// Only on page view. IntersectionObserver highlights active heading in outline.
+var observer = new IntersectionObserver(function(entries) { ... });
+document.querySelectorAll('h2, h3').forEach(function(h) { observer.observe(h); });
+```
+
+- Observes h2/h3 elements with IDs
+- Updates `border-left` color on active TOC item in outline panel
+- Only initialized on `/page/:title` views
+
+### 3. All Pages View Toggle (~10 lines)
+
+```javascript
+function updateQueryParam(key, value) {
+    var url = new URL(window.location.href);
+    url.searchParams.set(key, value);
+    return url.toString();
+}
+
+function setView(view) {
+    window.location.href = updateQueryParam('view', view);
+}
+```
+
+- `updateQueryParam()` is a utility used by `setView()` and filter dropdowns
+- Simply redirects with updated query parameter
+- Server renders the appropriate layout
+
+### Constraints
+
+- All JS is inline in `base_template`, wrapped in a single `<script>` tag
+- No external JS files (except KaTeX CDN and vis-network CDN)
+- No client-side state management
+- No fetch() / AJAX calls
+
 ## File Changes
 
 ### Modified Files
 
 | File | Changes |
 |---|---|
-| `src/serve/templates.rs` | Rewrite all template functions: base_template (3-panel + responsive + icons), home_template, page_template, all_pages_template, tags_template, tag_page_template, search_results_template, graph_template, not_found_template |
-| `src/serve/renderer.rs` | No changes needed (LaTeX protection already works) |
-| `src/serve/mod.rs` | Add outline data (TOC headings) to page handler response |
+| `src/serve/templates.rs` | Rewrite all template functions: base_template (3-panel + responsive + icons + inline JS + `<html lang="ko">`), home_template, page_template, all_pages_template, tags_template, tag_page_template, search_results_template, graph_template (full-width layout), not_found_template |
+| `src/serve/renderer.rs` | Add `extract_headings(html) -> Vec<Heading>` and `extract_summary(content) -> String` and `truncate_utf8(s, max_chars) -> String`. Modify `render_markdown()` to inject `id` attributes on h2/h3 tags. |
+| `src/serve/mod.rs` | Add `DocumentInfo`, `Heading`, `SearchResultInfo` structs. Add `AllPagesQuery` struct for parsed query parameters (`status: Option<String>`, `tag: Option<String>`, `q: Option<String>`, `view: String`, `sort: String`, `order: String`). Update page handler to pass TOC data and summary. Update all-pages handler to parse query params and filter. Update home handler to pass recent docs with summaries. |
 
 ### No New Files
 
-All changes are inline in `templates.rs`. Icons are inline SVG strings, no external assets.
+All changes are inline in existing files. Icons are inline SVG strings, no external assets.
 
 ## Out of Scope
 
@@ -290,3 +461,5 @@ All changes are inline in `templates.rs`. Icons are inline SVG strings, no exter
 - Theme toggle UI (dark/light) — use `prefers-color-scheme` media query only
 - Collapsible sidebar (future enhancement)
 - Full-text search index (keep current in-memory scan)
+- Client-side JavaScript framework or complex JS — only minimal inline scripts as defined in JavaScript Boundary
+- localStorage or client-side state — all data is server-rendered
