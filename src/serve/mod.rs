@@ -3,11 +3,11 @@
 mod renderer;
 mod templates;
 
-use crate::config::WikiConfig;
+use crate::config::{GlobalConfig, WikiConfig};
 use crate::scanner;
 use crate::scanner::ScanReport;
 use crate::types::{Document, Status};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -23,7 +23,13 @@ use renderer::render_markdown;
 
 /// Start the HTTP server
 pub async fn serve(path: &str, host: &str, port: u16, open: bool) -> Result<()> {
-    let wiki_path = PathBuf::from(shellexpand::tilde(path).to_string());
+    let wiki_path = if path == "." {
+        GlobalConfig::load()?
+            .and_then(|c| c.wiki_path)
+            .context("No default wiki path configured. Run `wistra onboard` first or specify a path.")?
+    } else {
+        PathBuf::from(shellexpand::tilde(path).to_string())
+    };
     let config = WikiConfig::load(&wiki_path)?;
     let report = scanner::scan_wiki(&config)?;
 
