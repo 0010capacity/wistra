@@ -1,6 +1,6 @@
 [package]
 name = "wistra"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 authors = ["0010capacity"]
 description = "AI-powered personal wiki builder"
