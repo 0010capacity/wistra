@@ -8,6 +8,7 @@ use crate::scanner;
 use crate::scanner::ScanReport;
 use crate::types::{Document, Status};
 use anyhow::{Context, Result};
+use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -17,9 +18,9 @@ use warp::Reply;
 
 use templates::{
     all_pages_template, graph_template, home_template, not_found_template, page_template,
-    search_results_template, tag_page_template, tags_template, DocumentInfo, SearchResult,
+    search_results_template, tag_page_template, tags_template, SearchResult,
 };
-use renderer::render_markdown;
+use renderer::{render_markdown, extract_summary};
 
 /// Start the HTTP server
 pub async fn serve(path: &str, host: &str, port: u16, open: bool) -> Result<()> {
@@ -108,6 +109,55 @@ fn create_filters(
 #[derive(Debug, serde::Deserialize)]
 struct SearchQuery {
     q: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DocumentInfo {
+    pub title: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub created: String,
+    pub summary: String,
+    pub aliases: Vec<String>,
+    pub backlinks: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchResultInfo {
+    pub title: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub match_type: String,
+    pub snippet: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AllPagesQuery {
+    pub status: Option<String>,
+    pub tag: Option<String>,
+    pub q: Option<String>,
+    pub view: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+}
+
+fn doc_to_info(doc: &Document, report: &ScanReport) -> DocumentInfo {
+    let backlinks: Vec<String> = report.link_graph.incoming_links
+        .get(&doc.title)
+        .map(|links| links.iter().map(|l| l.source_file.trim_end_matches(".md").to_string()).collect())
+        .unwrap_or_default();
+
+    let summary = extract_summary(&doc.body, &doc.title);
+
+    DocumentInfo {
+        title: doc.title.clone(),
+        status: doc.status.to_string(),
+        tags: doc.tags.clone(),
+        created: doc.created.to_string(),
+        summary,
+        aliases: doc.aliases.clone(),
+        backlinks,
+    }
 }
 
 /// Handle home page
