@@ -1,6 +1,6 @@
 /// HTML templates for the serve command
 
-use crate::serve::renderer::Heading;
+use crate::serve::renderer::{Heading, truncate_utf8};
 
 // ---------------------------------------------------------------------------
 // Lucide SVG icon constants
@@ -35,11 +35,7 @@ const ICON_CIRCLE: &str = icon!("circle", r#"<circle cx="12" cy="12" r="10"/>"#)
 
 /// Truncate label with ellipsis if too long
 fn truncate_label(s: &str, max_len: usize) -> String {
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len])
-    } else {
-        s.to_string()
-    }
+    truncate_utf8(s, max_len)
 }
 
 /// Wrap a tag string in a badge span.
@@ -1143,7 +1139,7 @@ pub fn all_pages_template(
     docs: &[DocumentInfo],
     view: &str,
     status_filter: Option<&str>,
-    tag_filter: Option<&str>,
+    _tag_filter: Option<&str>,
     q_filter: Option<&str>,
 ) -> String {
     let is_grid = view == "grid";
