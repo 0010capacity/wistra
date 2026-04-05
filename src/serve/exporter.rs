@@ -28,6 +28,7 @@ pub fn export(
     wiki_path: &Path,
     output_dir: &Path,
     target: HostingTarget,
+    project_name: &str,
 ) -> Result<()> {
     // Load wiki config and scan
     let wiki_path = wiki_path.to_path_buf();
@@ -104,17 +105,17 @@ pub fn export(
     println!("🌐 Deploy to:");
     match target {
         HostingTarget::Firebase => {
-            println!("   Firebase: https://<your-project>.web.app");
+            println!("   Firebase: https://{}.web.app", project_name);
             println!("              firebase deploy --only hosting");
         }
         HostingTarget::Cloudflare => {
-            println!("   Cloudflare: https://<your-project>.pages.dev");
+            println!("   Cloudflare: https://{}.pages.dev", project_name);
             println!("               wrangler pages deploy {}", output_dir.display());
         }
         HostingTarget::Both => {
-            println!("   Firebase:  https://<your-project>.web.app");
+            println!("   Firebase:  https://{}.web.app", project_name);
             println!("              firebase deploy --only hosting");
-            println!("   Cloudflare: https://<your-project>.pages.dev");
+            println!("   Cloudflare: https://{}.pages.dev", project_name);
             println!("               wrangler pages deploy {}", output_dir.display());
         }
     }

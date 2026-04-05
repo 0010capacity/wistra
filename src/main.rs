@@ -146,7 +146,7 @@ fn run_export(wiki_path: &str, output: &str, targets: &[String], project: Option
         HostingTarget::Firebase
     };
 
-    export(&wiki_path, &output_dir, target)?;
+    export(&wiki_path, &output_dir, target, &project_name)?;
 
     // ── Deploy if requested ──
     if deploy {
