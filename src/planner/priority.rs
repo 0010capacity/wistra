@@ -9,16 +9,40 @@ pub fn calculate_slot_allocation(
     _config: &GlobalConfig,
     total_slots: usize,
 ) -> SlotAllocation {
+    calculate_slot_allocation_with_polish(report, total_slots, 0)
+}
+
+/// Calculate slot allocation with optional polish count.
+/// Polish slots are taken from the remaining slots after disambig/stub.
+/// If polish_count > 0, no random slots are generated.
+#[allow(dead_code)]
+pub fn calculate_slot_allocation_with_polish(
+    report: &ScanReport,
+    total_slots: usize,
+    polish_count: usize,
+) -> SlotAllocation {
     let disambig_count = report.disambig_candidates.len();
     let remaining_after_disambig = total_slots.saturating_sub(disambig_count);
 
     let stub_count = report.stub_candidates.len().min(remaining_after_disambig);
     let remaining_after_stubs = remaining_after_disambig.saturating_sub(stub_count);
 
-    SlotAllocation {
-        disambig_count,
-        stub_count,
-        random_count: remaining_after_stubs,
+    if polish_count > 0 {
+        // Polish mode: allocate up to polish_count published docs, no random
+        let actual_polish = remaining_after_stubs.min(polish_count);
+        SlotAllocation {
+            disambig_count,
+            stub_count,
+            random_count: 0,
+            polish_count: actual_polish,
+        }
+    } else {
+        SlotAllocation {
+            disambig_count,
+            stub_count,
+            random_count: remaining_after_stubs,
+            polish_count: 0,
+        }
     }
 }
 
@@ -28,6 +52,7 @@ pub struct SlotAllocation {
     pub disambig_count: usize,
     pub stub_count: usize,
     pub random_count: usize,
+    pub polish_count: usize,
 }
 
 /// Sort stub candidates by inbound link count (descending)

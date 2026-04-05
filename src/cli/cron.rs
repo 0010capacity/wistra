@@ -2,9 +2,10 @@ use anyhow::{Context, Result, bail};
 use std::process::Command;
 
 /// Generate cron line for wistra
-pub fn generate_cron_line(hour: u8, minute: u8, no_git: bool) -> String {
+pub fn generate_cron_line(hour: u8, minute: u8, no_git: bool, polish: bool) -> String {
     let git_flag = if no_git { " --no-git" } else { "" };
-    format!("{} {} * * * wistra run --quiet --no-confirm{}", minute, hour, git_flag)
+    let polish_flag = if polish { " --polish" } else { "" };
+    format!("{} {} * * * wistra run --quiet --no-confirm{}{}", minute, hour, git_flag, polish_flag)
 }
 
 /// Parse time string (HH:MM format)
@@ -32,14 +33,14 @@ pub fn parse_time(time: &str) -> Result<(u8, u8)> {
 }
 
 /// Show cron line for the given time
-pub fn show_cron(hour: u8, minute: u8, no_git: bool) {
+pub fn show_cron(hour: u8, minute: u8, no_git: bool, polish: bool) {
     println!("📝 Add this line to your crontab (crontab -e):");
-    println!("    {}", generate_cron_line(hour, minute, no_git));
+    println!("    {}", generate_cron_line(hour, minute, no_git, polish));
 }
 
 /// Install cron job using crontab
-pub fn install_cron(hour: u8, minute: u8, no_git: bool) -> Result<()> {
-    let new_line = generate_cron_line(hour, minute, no_git);
+pub fn install_cron(hour: u8, minute: u8, no_git: bool, polish: bool) -> Result<()> {
+    let new_line = generate_cron_line(hour, minute, no_git, polish);
 
     // Get current crontab
     let current_crontab = Command::new("crontab")

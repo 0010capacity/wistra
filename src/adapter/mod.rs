@@ -40,6 +40,17 @@ pub struct SuggestionContext {
     pub recently_generated: Vec<String>,
 }
 
+/// Context for polishing an existing document
+#[derive(Debug, Clone)]
+pub struct PolishContext {
+    pub title: String,
+    pub body: String,
+    pub wiki_dir: std::path::PathBuf,
+    pub wiki_index: WikiIndex,
+    pub language: String,
+    pub tag_index: String,
+}
+
 /// Result of concept suggestion
 #[derive(Debug, Clone)]
 pub struct SuggestedConcept {
@@ -83,4 +94,7 @@ pub trait WikiAdapter: Send + Sync {
 
     /// Suggest a new concept based on interests and existing wiki
     async fn suggest_concept(&self, ctx: SuggestionContext) -> Result<SuggestedConcept>;
+
+    /// Polish an existing published document (improve content, add more links)
+    async fn polish_document(&self, ctx: PolishContext) -> Result<String>;
 }

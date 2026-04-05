@@ -103,7 +103,7 @@ pub fn run_onboard() -> Result<()> {
     // Install cron job if requested
     if setup_cron {
         println!("\n⏰ Setting up cron job...");
-        install_cron(cron_hour, cron_minute, false)?;
+        install_cron(cron_hour, cron_minute, false, false)?;
         println!("✅ Cron job installed!");
     }
 

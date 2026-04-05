@@ -290,9 +290,12 @@ fn doc_to_info(doc: &Document, report: &ScanReport) -> DocumentInfo {
 }
 
 fn find_doc_body(report: &ScanReport, title: &str) -> Option<String> {
+    // Documents are stored by filename, but we need to look up by title.
+    // Scan through values since filename may differ from title (e.g., spaces, .md).
     report
         .documents
-        .get(title)
+        .values()
+        .find(|d| d.title == title)
         .map(|d| d.body.clone())
 }
 

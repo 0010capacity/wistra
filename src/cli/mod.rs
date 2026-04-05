@@ -19,6 +19,10 @@ pub enum Commands {
         #[arg(short, long)]
         count: Option<usize>,
 
+        /// Polish existing published documents instead of generating new ones
+        #[arg(long)]
+        polish: bool,
+
         /// Dry run - preview without writing
         #[arg(long)]
         dry_run: bool,
@@ -333,6 +337,10 @@ pub enum Commands {
         /// Skip git commit/push in cron job
         #[arg(long)]
         no_git: bool,
+
+        /// Run in polish mode (improve existing documents)
+        #[arg(long)]
+        polish: bool,
     },
 }
 

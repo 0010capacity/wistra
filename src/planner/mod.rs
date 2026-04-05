@@ -3,6 +3,7 @@ pub mod interest;
 
 use crate::scanner::ScanReport;
 use crate::config::GlobalConfig;
+use crate::types;
 use anyhow::Result;
 
 /// Execution plan for a run
@@ -23,14 +24,26 @@ pub enum PlanAction {
     Disambiguation,
     Stub,
     Random,
+    Polish,
 }
 
 /// Create an execution plan from a scan report
 pub fn create_plan(report: &ScanReport, config: &GlobalConfig, slot_count: usize) -> Result<ExecutionPlan> {
+    create_plan_with_polish(report, config, slot_count, 0)
+}
+
+/// Create an execution plan with optional polish mode.
+/// In polish mode, randomly samples published documents instead of generating random new ones.
+pub fn create_plan_with_polish(
+    report: &ScanReport,
+    config: &GlobalConfig,
+    slot_count: usize,
+    polish_count: usize,
+) -> Result<ExecutionPlan> {
     let mut slots = Vec::new();
 
     // Calculate slot allocation using priority module
-    let allocation = priority::calculate_slot_allocation(report, config, slot_count);
+    let allocation = priority::calculate_slot_allocation_with_polish(report, slot_count, polish_count);
 
     // Priority 1: Disambiguation resolution (always first)
     for candidate in &report.disambig_candidates {
@@ -51,13 +64,35 @@ pub fn create_plan(report: &ScanReport, config: &GlobalConfig, slot_count: usize
         });
     }
 
-    // Priority 3: Interest-based random (fills remaining slots)
-    for i in 0..allocation.random_count {
-        slots.push(PlanSlot {
-            action: PlanAction::Random,
-            target: format!("random-suggestion-{}", i + 1),
-            details: "AI-suggested based on interests".to_string(),
-        });
+    // Priority 3a: Polish mode — randomly sample published documents
+    if allocation.polish_count > 0 {
+        let published: Vec<&types::Document> = report
+            .documents
+            .values()
+            .filter(|d| d.status == types::Status::Published)
+            .collect();
+
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+        let selected: Vec<_> = published.choose_multiple(&mut rng, allocation.polish_count).collect();
+
+        for doc in selected {
+            slots.push(PlanSlot {
+                action: PlanAction::Polish,
+                target: doc.title.clone(),
+                details: format!("polish existing document"),
+            });
+        }
+    }
+    // Priority 3b: Interest-based random (fills remaining slots when not in polish mode)
+    else {
+        for i in 0..allocation.random_count {
+            slots.push(PlanSlot {
+                action: PlanAction::Random,
+                target: format!("random-suggestion-{}", i + 1),
+                details: "AI-suggested based on interests".to_string(),
+            });
+        }
     }
 
     Ok(ExecutionPlan { slots })
@@ -72,6 +107,7 @@ impl ExecutionPlan {
                 PlanAction::Disambiguation => "disambig",
                 PlanAction::Stub => "stub",
                 PlanAction::Random => "random",
+                PlanAction::Polish => "polish",
             };
             println!("   [{}] {:8} → {} ({})",
                 i + 1, action_str, slot.target, slot.details);

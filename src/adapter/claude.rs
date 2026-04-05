@@ -1,4 +1,4 @@
-use crate::adapter::{DisambigContext, DisambigResult, GenerationContext, SuggestedConcept, SuggestionContext, WikiAdapter};
+use crate::adapter::{DisambigContext, DisambigResult, GenerationContext, PolishContext, SuggestedConcept, SuggestionContext, WikiAdapter};
 use crate::types::{Document, Status};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -278,6 +278,46 @@ Return JSON only, no other text:
 
         let response = self.call_cli(&prompt, &ctx.wiki_dir).await?;
         parse_suggestion_response(&response)
+    }
+
+    async fn polish_document(&self, ctx: PolishContext) -> Result<String> {
+        let wiki_index_json = serde_json::to_string_pretty(&ctx.wiki_index.entries)
+            .context("Failed to serialize wiki index")?;
+
+        let prompt = format!(
+            r#"Polish and improve the following wiki document. The document should be enhanced while keeping the same structure and frontmatter.
+
+Current document:
+---
+title: "{}"
+---
+{}
+
+[Wiki Context]
+Language: {}
+Tag hierarchy: {}
+Wiki index (title, tags, summary):
+{}
+
+[Instructions]
+Improve the document by:
+1. Expanding shallow sections with more detail and examples
+2. Adding more [[wikilinks]] to related existing documents
+3. Improving clarity and flow of explanations
+4. Adding relevant mathematical notation ($...$ or $$...$$) where appropriate
+5. Using Obsidian callout syntax (> [!note], > [!example], etc.) for key insights
+6. Keeping all existing [[wikilinks]] that are still relevant
+
+Return the complete improved document with YAML frontmatter intact (keep the title, aliases, tags, status, language, created fields as-is). Do NOT change the frontmatter fields. Do NOT wrap output in code fences. Write raw Markdown only.
+"#,
+            ctx.title,
+            ctx.body,
+            ctx.language,
+            ctx.tag_index,
+            wiki_index_json
+        );
+
+        self.call_cli(&prompt, &ctx.wiki_dir).await
     }
 }
 

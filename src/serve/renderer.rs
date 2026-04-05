@@ -158,13 +158,17 @@ pub fn extract_summary(content: &str, title: &str) -> String {
 }
 
 /// Convert [[wikilinks]] to HTML links
+/// Normalizes the target to match slugify() format: spaces → hyphens,
+/// then URL-encodes for safe URLs.
 fn convert_wikilinks(text: &str) -> String {
     let re = Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
 
     re.replace_all(text, |caps: &regex::Captures| {
         let target = caps.get(1).map_or("", |m| m.as_str());
         let display = caps.get(2).map_or(target, |m| m.as_str());
-        let encoded = urlencoding::encode(target);
+        // Normalize: spaces → hyphens to match slugify() used in export paths
+        let normalized = target.replace(' ', "-");
+        let encoded = urlencoding::encode(&normalized);
         format!(r#"<a href="/page/{}">{}</a>"#, encoded, display)
     })
     .to_string()

@@ -1056,7 +1056,10 @@ pub fn page_template(
     } else {
         let links: String = doc.backlinks
             .iter()
-            .map(|t| format!(r#"<li><a href="/page/{}">{}</a></li>"#, urlencoding::encode(t), t))
+            .map(|t| {
+                let normalized = t.replace(' ', "-");
+                format!(r#"<li><a href="/page/{}">{}</a></li>"#, urlencoding::encode(&normalized), t)
+            })
             .collect();
         format!(
             r##"<div class="backlinks">

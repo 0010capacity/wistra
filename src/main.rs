@@ -58,8 +58,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Status { path }) => {
             run_status(&path)?;
         }
-        Some(cli::Commands::Run { path, count, dry_run, quiet, no_confirm, no_git }) => {
-            run_wiki_growth(&path, count, dry_run, quiet, no_confirm, !no_git).await?;
+        Some(cli::Commands::Run { path, count, dry_run, quiet, no_confirm, no_git, polish }) => {
+            run_wiki_growth(&path, count, dry_run, quiet, no_confirm, !no_git, polish).await?;
         }
         Some(cli::Commands::Rename { old_title, new_title, path, dry_run }) => {
             run_rename(&path, &old_title, &new_title, dry_run)?;
@@ -103,8 +103,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;
         }
-        Some(cli::Commands::Cron { set, show, remove, install, no_git }) => {
-            run_cron(set.as_deref(), show, remove, install, no_git)?;
+        Some(cli::Commands::Cron { set, show, remove, install, no_git, polish }) => {
+            run_cron(set.as_deref(), show, remove, install, no_git, polish)?;
         }
     }
 
@@ -134,15 +134,20 @@ fn run_export(wiki_path: &str, output: &str, targets: &[String], project: Option
 
     // Auto-derive project name from wiki path
     let project_name = project.map(String::from).unwrap_or_else(|| {
-        wiki_path
+        let name = wiki_path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("wistra-wiki")
-            .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
-            .collect::<String>()
-            .trim_matches('-')
-            .to_string()
+            .unwrap_or("");
+        // Normalize: "wiki" → "wistra-wiki", otherwise clean the name
+        if name == "wiki" {
+            "wistra-wiki".to_string()
+        } else {
+            name.chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+                .collect::<String>()
+                .trim_matches('-')
+                .to_string()
+        }
     });
 
     let target = if targets.iter().any(|t| t.eq_ignore_ascii_case("both")) {
@@ -1172,6 +1177,7 @@ async fn run_wiki_growth(
     quiet: bool,
     no_confirm: bool,
     git: bool,
+    polish: bool,
 ) -> Result<()> {
     use dialoguer::Confirm;
     use indicatif::{ProgressBar, ProgressStyle};
@@ -1210,7 +1216,12 @@ async fn run_wiki_growth(
     }
 
     // Create execution plan
-    let plan = planner::create_plan(&report, &global_config, count)?;
+    let plan = if polish {
+        let polish_count = count;
+        planner::create_plan_with_polish(&report, &global_config, polish_count, polish_count)?
+    } else {
+        planner::create_plan(&report, &global_config, count)?
+    };
 
     if plan.slots.is_empty() {
         if !quiet {
@@ -1239,8 +1250,8 @@ async fn run_wiki_growth(
         return Ok(());
     }
 
-    // Confirm
-    if !no_confirm {
+    // Confirm (skip for polish mode)
+    if !no_confirm && !polish {
         let proceed = Confirm::new()
             .with_prompt("Proceed?")
             .default(true)
@@ -1270,6 +1281,7 @@ async fn run_wiki_growth(
     // Process each slot
     let mut generated_docs: Vec<types::Document> = Vec::new();
     let mut link_updates: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut polished_docs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for (_i, slot) in plan.slots.iter().enumerate() {
         if let Some(ref pb) = pb {
             pb.set_message(format!("{}", slot.target));
@@ -1392,6 +1404,37 @@ async fn run_wiki_growth(
                     }
                 }
             }
+            planner::PlanAction::Polish => {
+                // Find the document body from the scan report
+                let body = report.documents
+                    .values()
+                    .find(|d| d.title == slot.target)
+                    .map(|d| d.body.clone())
+                    .unwrap_or_default();
+
+                let ctx = adapter::PolishContext {
+                    title: slot.target.clone(),
+                    body,
+                    wiki_dir: wiki_path.clone(),
+                    wiki_index: report.wiki_index.clone(),
+                    language: global_config.language.clone(),
+                    tag_index: build_tag_index(&report),
+                };
+
+                match adapter.polish_document(ctx).await {
+                    Ok(polished) => {
+                        if !quiet {
+                            println!("   ✨ Polished: {}", slot.target);
+                        }
+                        polished_docs.insert(slot.target.clone(), polished);
+                    }
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("❌ Failed to polish {}: {}", slot.target, e);
+                        }
+                    }
+                }
+            }
         }
 
         if let Some(ref pb) = pb {
@@ -1404,11 +1447,11 @@ async fn run_wiki_growth(
     }
 
     // Write documents
+    let has_changes = !generated_docs.is_empty() || !polished_docs.is_empty();
     if !generated_docs.is_empty() {
         if !quiet {
             println!("\n✍️  Writing {} documents...", generated_docs.len());
         }
-
         writer::DocumentWriter::write_batch(&generated_docs, &wiki_config.concepts_dir())?;
 
         // Apply link rewrites from disambiguation if any
@@ -1421,18 +1464,38 @@ async fn run_wiki_growth(
                 println!("   {} files updated", updated_count);
             }
         }
+    }
 
-        // Re-scan to get updated report
+    // Write polished documents
+    if !polished_docs.is_empty() {
+        if !quiet {
+            println!("\n✨ Polishing {} documents...", polished_docs.len());
+        }
+        for (title, content) in &polished_docs {
+            let filename = format!("{}.md", title);
+            let filepath = wiki_config.concepts_dir().join(&filename);
+            if !quiet {
+                println!("   Updated: {}", title);
+            }
+            std::fs::write(&filepath, content)
+                .with_context(|| format!("Failed to write polished document: {}", title))?;
+        }
+    }
+
+    // Re-scan and regenerate meta files if any changes were made
+    if has_changes {
         let final_report = scanner::scan_wiki(&wiki_config)?;
-
-        // Generate meta files
         scanner::meta::generate_meta_files(&wiki_config, &final_report)?;
 
-        // Update state
-        update_state(&wiki_config, &final_report, &generated_docs)?;
-
         if !quiet {
-            println!("✅ Done. {} documents added.", generated_docs.len());
+            if !generated_docs.is_empty() && !polished_docs.is_empty() {
+                println!("✅ Done. {} added, {} polished.",
+                    generated_docs.len(), polished_docs.len());
+            } else if !generated_docs.is_empty() {
+                println!("✅ Done. {} documents added.", generated_docs.len());
+            } else {
+                println!("✅ Done. {} documents polished.", polished_docs.len());
+            }
         }
     } else if plan.slots.is_empty() {
         // No documents generated but plan was shown - just regenerate meta files
@@ -1763,7 +1826,7 @@ fn normalize_for_comparison(s: &str) -> String {
 }
 
 /// Run the cron command - manage cron jobs
-fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, no_git: bool) -> Result<()> {
+fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, no_git: bool, polish: bool) -> Result<()> {
     // Default: show help if no options
     if set.is_none() && !show && !remove && !install {
         println!("wistra cron - Manage scheduled runs");
@@ -1772,6 +1835,7 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, no_git: 
         println!("  wistra cron --set 14:30     Set cron time (shows crontab line)");
         println!("  wistra cron --set 14:30 --install  Auto-install to crontab");
         println!("  wistra cron --set 14:30 --no-git   Skip git commit/push");
+        println!("  wistra cron --set 14:30 --polish   Polish existing documents");
         println!("  wistra cron --show          Show current crontab line");
         println!("  wistra cron --remove        Remove wistra from crontab");
         return Ok(());
@@ -1782,9 +1846,9 @@ fn run_cron(set: Option<&str>, show: bool, remove: bool, install: bool, no_git: 
         let (hour, minute) = cli::cron::parse_time(time)?;
 
         if install {
-            cli::cron::install_cron(hour, minute, no_git)?;
+            cli::cron::install_cron(hour, minute, no_git, polish)?;
         } else {
-            cli::cron::show_cron(hour, minute, no_git);
+            cli::cron::show_cron(hour, minute, no_git, polish);
         }
         return Ok(());
     }
