@@ -18,9 +18,9 @@ use warp::Reply;
 
 use templates::{
     all_pages_template, graph_template, home_template, not_found_template, page_template,
-    search_results_template, tag_page_template, tags_template, SearchResult,
+    search_results_template, tag_page_template, tags_template,
 };
-use renderer::{extract_headings, extract_summary, render_markdown};
+use renderer::{extract_headings, extract_summary, render_markdown, truncate_utf8};
 
 /// Start the HTTP server
 pub async fn serve(path: &str, host: &str, port: u16, open: bool) -> Result<()> {
@@ -78,6 +78,7 @@ fn create_filters(
     // Routes
     let root = warp::path::end().and(with_state.clone()).and_then(handle_home);
     let all_pages = warp::path("all")
+        .and(warp::query::<AllPagesQuery>())
         .and(with_state.clone())
         .and_then(handle_all_pages);
     let tags = warp::path("tags")
@@ -161,78 +162,86 @@ fn doc_to_info(doc: &Document, report: &ScanReport) -> DocumentInfo {
 }
 
 /// Handle home page
-async fn handle_home(state: WikiState) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_home(state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
-
-    let docs: Vec<DocumentInfo> = report
-        .documents
-        .values()
-        .filter(|doc| doc.status != Status::Meta)
-        .map(|doc| DocumentInfo {
-            title: doc.title.clone(),
-            status: doc.status.to_string(),
-            created: doc.created.format("%Y-%m-%d").to_string(),
-        })
+    let mut docs: Vec<DocumentInfo> = report.documents
+        .iter()
+        .filter(|(_, d)| d.status != Status::Meta)
+        .map(|(_, d)| doc_to_info(d, &report))
         .collect();
-
-    let html = home_template(&docs);
+    docs.sort_by(|a, b| b.created.cmp(&a.created));
+    let recent: Vec<&DocumentInfo> = docs.iter().take(5).collect();
+    let random = docs.choose(&mut rand::thread_rng());
+    let total = docs.len();
+    let published = docs.iter().filter(|d| d.status == "published").count();
+    let stubs = docs.iter().filter(|d| d.status == "stub").count();
+    let tag_count = report.tag_stats.unique_tags;
+    let html = templates::home_template(&recent, random, total, published, stubs, tag_count);
     Ok(warp::reply::html(html).into_response())
 }
 
 /// Handle all pages list
-async fn handle_all_pages(state: WikiState) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_all_pages(query: AllPagesQuery, state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
-
-    let mut docs: Vec<DocumentInfo> = report
-        .documents
-        .values()
-        .filter(|doc| doc.status != Status::Meta)
-        .map(|doc| DocumentInfo {
-            title: doc.title.clone(),
-            status: doc.status.to_string(),
-            created: doc.created.format("%Y-%m-%d").to_string(),
-        })
+    let mut docs: Vec<DocumentInfo> = report.documents
+        .iter()
+        .filter(|(_, d)| d.status != Status::Meta)
+        .map(|(_, d)| doc_to_info(d, &report))
         .collect();
 
-    docs.sort_by(|a, b| a.title.cmp(&b.title));
+    // Filter by status
+    if let Some(ref status) = query.status {
+        if !status.is_empty() {
+            docs.retain(|d| d.status == *status);
+        }
+    }
+    // Filter by tag
+    if let Some(ref tag) = query.tag {
+        if !tag.is_empty() {
+            docs.retain(|d| d.tags.iter().any(|t| t == tag));
+        }
+    }
+    // Filter by search
+    if let Some(ref q) = query.q {
+        if !q.is_empty() {
+            let lower = q.to_lowercase();
+            docs.retain(|d| d.title.to_lowercase().contains(&lower));
+        }
+    }
+    // Sort
+    let sort_field = query.sort.as_deref().unwrap_or("date");
+    let ascending = query.order.as_deref() == Some("asc");
+    docs.sort_by(|a, b| {
+        let cmp = match sort_field {
+            "title" => a.title.cmp(&b.title),
+            "status" => a.status.cmp(&b.status),
+            _ => b.created.cmp(&a.created),
+        };
+        if ascending { cmp.reverse() } else { cmp }
+    });
 
-    let html = all_pages_template(&docs);
+    let view = query.view.as_deref().unwrap_or("grid");
+    let html = templates::all_pages_template(&docs, view, &query);
     Ok(warp::reply::html(html).into_response())
 }
 
 /// Handle tags page
-async fn handle_tags(state: WikiState) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_tags(state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
-
-    let mut tags: Vec<(String, usize)> = report
-        .tag_stats
-        .tag_counts
-        .iter()
-        .map(|(k, v)| (k.clone(), *v))
-        .collect();
-
-    tags.sort_by(|a, b| b.1.cmp(&a.1));
-
-    let html = tags_template(&tags);
+    let tags = &report.tag_stats.tag_counts;
+    let html = templates::tags_template(tags);
     Ok(warp::reply::html(html).into_response())
 }
 
 /// Handle documents by tag
-async fn handle_tag(tag: String, state: WikiState) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_tag(tag: String, state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
-
-    let docs: Vec<DocumentInfo> = report
-        .documents
-        .values()
-        .filter(|doc| doc.tags.contains(&tag) && doc.status != Status::Meta)
-        .map(|doc| DocumentInfo {
-            title: doc.title.clone(),
-            status: doc.status.to_string(),
-            created: doc.created.format("%Y-%m-%d").to_string(),
-        })
+    let docs: Vec<DocumentInfo> = report.documents
+        .iter()
+        .filter(|(_, d)| d.status != Status::Meta && d.tags.contains(&tag))
+        .map(|(_, d)| doc_to_info(d, &report))
         .collect();
-
-    let html = tag_page_template(&tag, &docs);
+    let html = templates::tag_page_template(&tag, &docs);
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -271,51 +280,44 @@ async fn handle_graph(state: WikiState) -> Result<impl warp::Reply, warp::Reject
 }
 
 /// Handle search
-async fn handle_search(
-    query: SearchQuery,
-    state: WikiState,
-) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_search(query: SearchQuery, state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
-    let query_lower = query.q.to_lowercase();
+    let q = query.q.to_lowercase();
+    let mut results: Vec<SearchResultInfo> = Vec::new();
 
-    let mut results: Vec<SearchResult> = Vec::new();
-
-    for doc in report.documents.values() {
-        if doc.status == Status::Meta {
-            continue;
-        }
-
-        let match_type = if doc.title.to_lowercase().contains(&query_lower) {
-            "title"
-        } else if doc.body.to_lowercase().contains(&query_lower) {
-            "content"
-        } else if doc.tags.iter().any(|t| t.to_lowercase().contains(&query_lower)) {
-            "tag"
-        } else if doc.aliases.iter().any(|a| a.to_lowercase().contains(&query_lower)) {
-            "alias"
+    for (_, doc) in &report.documents {
+        if doc.status == Status::Meta { continue; }
+        let title_lower = doc.title.to_lowercase();
+        let body_lower = doc.body.to_lowercase();
+        let (match_type, snippet) = if title_lower.contains(&q) {
+            ("title".into(), renderer::extract_summary(&doc.body, &doc.title))
+        } else if body_lower.contains(&q) {
+            let pos = body_lower.find(&q).unwrap();
+            let start = pos.saturating_sub(50);
+            let end = (pos + q.len() + 50).min(doc.body.len());
+            let context = doc.body.get(start..end).unwrap_or("").to_string();
+            ("content".into(), renderer::truncate_utf8(&context, 120))
+        } else if doc.tags.iter().any(|t| t.to_lowercase().contains(&q)) {
+            ("tag".into(), renderer::extract_summary(&doc.body, &doc.title))
+        } else if doc.aliases.iter().any(|a| a.to_lowercase().contains(&q)) {
+            ("alias".into(), renderer::extract_summary(&doc.body, &doc.title))
         } else {
             continue;
         };
-
-        results.push(SearchResult {
+        results.push(SearchResultInfo {
             title: doc.title.clone(),
-            match_type: match_type.to_string(),
+            status: doc.status.to_string(),
+            tags: doc.tags.clone(),
+            match_type,
+            snippet,
         });
     }
 
-    // Sort: title matches first, then content, then tags/aliases
-    results.sort_by(|a, b| {
-        let order = |t: &str| match t {
-            "title" => 0,
-            "content" => 1,
-            "tag" => 2,
-            "alias" => 3,
-            _ => 4,
-        };
-        order(&a.match_type).cmp(&order(&b.match_type))
+    results.sort_by_key(|r| match r.match_type.as_str() {
+        "title" => 0, "content" => 1, "tag" => 2, _ => 3,
     });
 
-    let html = search_results_template(&query.q, &results);
+    let html = templates::search_results_template(&query.q, &results);
     Ok(warp::reply::html(html).into_response())
 }
 
