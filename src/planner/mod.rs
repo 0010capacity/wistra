@@ -114,3 +114,17 @@ impl ExecutionPlan {
         }
     }
 }
+
+/// Create an execution plan from seed concepts for initial wiki population
+pub fn create_seed_plan(topics: &[String]) -> ExecutionPlan {
+    let slots = topics
+        .iter()
+        .map(|topic| PlanSlot {
+            action: PlanAction::Stub,
+            target: topic.clone(),
+            details: "seed concept".to_string(),
+        })
+        .collect();
+
+    ExecutionPlan { slots }
+}

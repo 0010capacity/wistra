@@ -71,6 +71,7 @@ pub fn base_template(
     outline_html: &str,
     main_content: &str,
     build_timestamp: Option<&str>,
+    wiki_name: &str,
 ) -> String {
     fn nav_item(href: &str, label: &str, icon: &str, active_nav: &str, current: &str) -> String {
         let active = if current == active_nav { " nav-link-active" } else { "" };
@@ -86,7 +87,7 @@ pub fn base_template(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} — Wistra</title>
+    <title>{title} — {wiki_name}</title>
     <style>
         :root {{
             --bg: #fafaf9;
@@ -747,7 +748,7 @@ pub fn base_template(
 <header class="topbar">
     <div class="topbar-logo">
         <span class="topbar-icon">{ICON_BOOK_OPEN}</span>
-        <a href="/">Wistra</a>
+        <a href="/">{wiki_name}</a>
     </div>
     <div class="search-wrap">
         <form action="/search" method="get">
@@ -910,6 +911,7 @@ pub fn home_template(
     stubs: usize,
     tag_count: usize,
     build_timestamp: Option<&str>,
+    wiki_name: &str,
 ) -> String {
     // ── Sidebar: recent docs ──
     let recent_sidebar: String = recent
@@ -1024,7 +1026,7 @@ pub fn home_template(
         quick_links
     );
 
-    base_template("Home", "home", &sidebar_html, "", &main_content, build_timestamp)
+    base_template("Home", "home", &sidebar_html, "", &main_content, build_timestamp, wiki_name)
 }
 
 /// Single document page with TOC, metadata, and backlinks.
@@ -1032,6 +1034,7 @@ pub fn page_template(
     doc: &DocumentInfo,
     html_body: &str,
     headings: &[Heading],
+    wiki_name: &str,
 ) -> String {
     // ── Tags HTML ──
     let tags_html: String = doc.tags.iter().map(|t| tag_badge(t)).collect::<Vec<_>>().join(" ");
@@ -1142,7 +1145,7 @@ pub fn page_template(
         )
     };
 
-    base_template(&doc.title, "home", &sidebar_html, &outline_html, &main_content, None)
+    base_template(&doc.title, "home", &sidebar_html, &outline_html, &main_content, None, wiki_name)
 }
 
 /// All pages listing with filter bar and grid/list toggle.
@@ -1152,6 +1155,7 @@ pub fn all_pages_template(
     status_filter: Option<&str>,
     _tag_filter: Option<&str>,
     q_filter: Option<&str>,
+    wiki_name: &str,
 ) -> String {
     let is_grid = view == "grid";
 
@@ -1269,11 +1273,11 @@ pub fn all_pages_template(
         )
     };
 
-    base_template("All Pages", "all", &sidebar_html, "", &main_content, None)
+    base_template("All Pages", "all", &sidebar_html, "", &main_content, None, wiki_name)
 }
 
 /// Search results page.
-pub fn search_results_template(query: &str, results: &[SearchResultInfo]) -> String {
+pub fn search_results_template(query: &str, results: &[SearchResultInfo], wiki_name: &str) -> String {
     let search_bar = format!(
         r#"<div class="search-bar-top">
             <input type="text" id="q-input" value="{}" placeholder="Search documents..." autofocus>
@@ -1344,17 +1348,17 @@ pub fn search_results_template(query: &str, results: &[SearchResultInfo]) -> Str
         cards
     );
 
-    base_template(&format!("Search: {}", query), "home", "", "", &main_content, None)
+    base_template(&format!("Search: {}", query), "home", "", "", &main_content, None, wiki_name)
 }
 
 /// Tags overview page with tag cloud.
-pub fn tags_template(tags: &[(String, usize)]) -> String {
+pub fn tags_template(tags: &[(String, usize)], wiki_name: &str) -> String {
     if tags.is_empty() {
         let main = r#"<article>
             <h1>Tags</h1>
             <p>No tags found.</p>
         </article>"#.to_string();
-        return base_template("Tags", "tags", "", "", &main, None);
+        return base_template("Tags", "tags", "", "", &main, None, wiki_name);
     }
 
     // Compute font size range based on doc count
@@ -1386,11 +1390,11 @@ pub fn tags_template(tags: &[(String, usize)]) -> String {
         tag_cloud
     );
 
-    base_template("Tags", "tags", "", "", &main_content, None)
+    base_template("Tags", "tags", "", "", &main_content, None, wiki_name)
 }
 
 /// Documents filtered by a specific tag.
-pub fn tag_page_template(tag: &str, docs: &[DocumentInfo]) -> String {
+pub fn tag_page_template(tag: &str, docs: &[DocumentInfo], wiki_name: &str) -> String {
     let cards: String = docs
         .iter()
         .map(|d| {
@@ -1440,11 +1444,11 @@ pub fn tag_page_template(tag: &str, docs: &[DocumentInfo]) -> String {
         ICON_TAG
     );
 
-    base_template(&format!("Tag: {}", tag), "tags", &sidebar_html, "", &main_content, None)
+    base_template(&format!("Tag: {}", tag), "tags", &sidebar_html, "", &main_content, None, wiki_name)
 }
 
 /// Graph page with interactive network visualization.
-pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) -> String {
+pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)], wiki_name: &str) -> String {
     let nodes_json: String = documents
         .iter()
         .map(|doc| {
@@ -1553,11 +1557,11 @@ pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) ->
 
     // Override layout: hide sidebar/outline on graph page
     // Pass empty sidebar/outline; the graph page is full-width
-    base_template("Knowledge Graph", "graph", "", "", &main_content, None)
+    base_template("Knowledge Graph", "graph", "", "", &main_content, None, wiki_name)
 }
 
 /// 404 not found page.
-pub fn not_found_template(title: &str) -> String {
+pub fn not_found_template(title: &str, wiki_name: &str) -> String {
     let main_content = format!(
         r#"<article style="text-align:center;padding:3rem 2rem;">
             <h1 style="font-size:4rem;margin-bottom:1rem;opacity:0.3;">404</h1>
@@ -1587,5 +1591,5 @@ pub fn not_found_template(title: &str) -> String {
         title
     );
 
-    base_template("Not Found", "home", "", "", &main_content, None)
+    base_template("Not Found", "home", "", "", &main_content, None, wiki_name)
 }

@@ -178,7 +178,8 @@ async fn handle_home(state: WikiState) -> Result<impl Reply, Rejection> {
     let published = docs.iter().filter(|d| d.status == "published").count();
     let stubs = docs.iter().filter(|d| d.status == "stub").count();
     let tag_count = report.tag_stats.unique_tags;
-    let html = templates::home_template(&recent, random, total, published, stubs, tag_count, None);
+    let wiki_name = state.config.display_name();
+    let html = templates::home_template(&recent, random, total, published, stubs, tag_count, None, wiki_name);
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -223,7 +224,7 @@ async fn handle_all_pages(query: AllPagesQuery, state: WikiState) -> Result<impl
     });
 
     let view = query.view.as_deref().unwrap_or("grid");
-    let html = templates::all_pages_template(&docs, view, query.status.as_deref(), query.tag.as_deref(), query.q.as_deref());
+    let html = templates::all_pages_template(&docs, view, query.status.as_deref(), query.tag.as_deref(), query.q.as_deref(), state.config.display_name());
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -231,7 +232,7 @@ async fn handle_all_pages(query: AllPagesQuery, state: WikiState) -> Result<impl
 async fn handle_tags(state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
     let tags = &report.tag_stats.tag_counts;
-    let html = templates::tags_template(tags);
+    let html = templates::tags_template(tags, state.config.display_name());
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -243,7 +244,7 @@ async fn handle_tag(tag: String, state: WikiState) -> Result<impl Reply, Rejecti
         .filter(|(_, d)| d.status != Status::Meta && d.tags.contains(&tag))
         .map(|(_, d)| doc_to_info(d, &report))
         .collect();
-    let html = templates::tag_page_template(&tag, &docs);
+    let html = templates::tag_page_template(&tag, &docs, state.config.display_name());
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -273,7 +274,7 @@ async fn handle_graph(state: WikiState) -> Result<impl warp::Reply, warp::Reject
         })
         .collect();
 
-    let html = graph_template(&docs, &links);
+    let html = graph_template(&docs, &links, state.config.display_name());
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -315,7 +316,7 @@ async fn handle_search(query: SearchQuery, state: WikiState) -> Result<impl Repl
         "title" => 0, "content" => 1, "tag" => 2, _ => 3,
     });
 
-    let html = templates::search_results_template(&query.q, &results);
+    let html = templates::search_results_template(&query.q, &results, state.config.display_name());
     Ok(warp::reply::html(html).into_response())
 }
 
@@ -327,11 +328,11 @@ async fn handle_page(title: String, state: WikiState) -> Result<impl Reply, Reje
             let html_body = renderer::render_markdown(&doc.body);
             let headings = renderer::extract_headings(&html_body);
             let info = doc_to_info(doc, &report);
-            let html = templates::page_template(&info, &html_body, &headings);
+            let html = templates::page_template(&info, &html_body, &headings, state.config.display_name());
             Ok(warp::reply::html(html).into_response())
         }
         None => {
-            let html = templates::not_found_template(&title);
+            let html = templates::not_found_template(&title, state.config.display_name());
             Ok(warp::reply::with_status(html, StatusCode::NOT_FOUND).into_response())
         }
     }

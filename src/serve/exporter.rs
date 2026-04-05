@@ -53,14 +53,14 @@ pub fn export(
     let tags: Vec<(String, usize)> = report.tag_stats.tag_counts.clone();
 
     // ── Render pages ──
-    render_home(&output_dir, &docs, report.counts.total, tags.len())?;
-    render_all_pages(&output_dir, &docs)?;
-    render_tags(&output_dir, &tags)?;
-    render_graph(&output_dir, &docs, &report)?;
+    render_home(&output_dir, &docs, report.counts.total, tags.len(), &config)?;
+    render_all_pages(&output_dir, &docs, &config)?;
+    render_tags(&output_dir, &tags, &config)?;
+    render_graph(&output_dir, &docs, &report, &config)?;
 
     // Individual pages
     for doc in &docs {
-        render_page(output_dir, doc, &report)?;
+        render_page(output_dir, doc, &report, &config)?;
     }
 
     // Tag pages
@@ -72,11 +72,11 @@ pub fn export(
             .filter(|d| d.tags.contains(tag))
             .cloned()
             .collect();
-        render_tag_page(output_dir, tag, &tag_docs)?;
+        render_tag_page(output_dir, tag, &tag_docs, &config)?;
     }
 
     // 404 page
-    render_404(output_dir)?;
+    render_404(output_dir, &config)?;
 
     println!(
         "   {} pages, {} tag pages exported",
@@ -128,7 +128,7 @@ pub fn export(
 // Page renderers
 // ---------------------------------------------------------------------------
 
-fn render_home(output_dir: &Path, docs: &[DocumentInfo], total: usize, tag_count: usize) -> Result<()> {
+fn render_home(output_dir: &Path, docs: &[DocumentInfo], total: usize, tag_count: usize, config: &WikiConfig) -> Result<()> {
     let mut sorted = docs.to_vec();
     sorted.sort_by(|a, b| b.created.cmp(&a.created));
     let recent: Vec<&DocumentInfo> = sorted.iter().take(5).collect();
@@ -138,21 +138,21 @@ fn render_home(output_dir: &Path, docs: &[DocumentInfo], total: usize, tag_count
     let stubs = docs.iter().filter(|d| d.status == "stub").count();
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-    let html = home_template(&recent, random, total, published, stubs, tag_count, Some(&timestamp));
+    let html = home_template(&recent, random, total, published, stubs, tag_count, Some(&timestamp), config.display_name());
     write_file(output_dir.join("index.html"), &html)
 }
 
-fn render_all_pages(output_dir: &Path, docs: &[DocumentInfo]) -> Result<()> {
-    let html = all_pages_template(docs, "grid", None, None, None);
+fn render_all_pages(output_dir: &Path, docs: &[DocumentInfo], config: &WikiConfig) -> Result<()> {
+    let html = all_pages_template(docs, "grid", None, None, None, config.display_name());
     write_file(output_dir.join("all").join("index.html"), &html)
 }
 
-fn render_tags(output_dir: &Path, tags: &[(String, usize)]) -> Result<()> {
-    let html = tags_template(tags);
+fn render_tags(output_dir: &Path, tags: &[(String, usize)], config: &WikiConfig) -> Result<()> {
+    let html = tags_template(tags, config.display_name());
     write_file(output_dir.join("tags").join("index.html"), &html)
 }
 
-fn render_graph(output_dir: &Path, docs: &[DocumentInfo], report: &ScanReport) -> Result<()> {
+fn render_graph(output_dir: &Path, docs: &[DocumentInfo], report: &ScanReport, config: &WikiConfig) -> Result<()> {
     let links: Vec<(String, String)> = report
         .link_graph
         .outgoing_links
@@ -168,31 +168,31 @@ fn render_graph(output_dir: &Path, docs: &[DocumentInfo], report: &ScanReport) -
         })
         .collect();
 
-    let html = graph_template(docs, &links);
+    let html = graph_template(docs, &links, config.display_name());
     write_file(output_dir.join("graph").join("index.html"), &html)
 }
 
-fn render_page(output_dir: &Path, doc: &DocumentInfo, report: &ScanReport) -> Result<()> {
+fn render_page(output_dir: &Path, doc: &DocumentInfo, report: &ScanReport, config: &WikiConfig) -> Result<()> {
     let html_body = match find_doc_body(&report, &doc.title) {
         Some(body) => render_markdown(&body),
         None => String::new(),
     };
 
     let headings = extract_headings(&html_body);
-    let html = page_template(doc, &html_body, &headings);
+    let html = page_template(doc, &html_body, &headings, config.display_name());
 
     let slug = slugify(&doc.title);
     write_file(output_dir.join("page").join(&slug).join("index.html"), &html)
 }
 
-fn render_tag_page(output_dir: &Path, tag: &str, docs: &[DocumentInfo]) -> Result<()> {
-    let html = tag_page_template(tag, docs);
+fn render_tag_page(output_dir: &Path, tag: &str, docs: &[DocumentInfo], config: &WikiConfig) -> Result<()> {
+    let html = tag_page_template(tag, docs, config.display_name());
     let slug = slugify(tag);
     write_file(output_dir.join("tag").join(&slug).join("index.html"), &html)
 }
 
-fn render_404(output_dir: &Path) -> Result<()> {
-    let html = not_found_template("Page not found");
+fn render_404(output_dir: &Path, config: &WikiConfig) -> Result<()> {
+    let html = not_found_template("Page not found", config.display_name());
     write_file(output_dir.join("404.html"), &html)
 }
 

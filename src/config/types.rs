@@ -70,9 +70,20 @@ pub struct WikiConfig {
     /// Wiki root path (concepts/, meta/ directories are here)
     #[serde(skip)]
     pub root_path: PathBuf,
+    /// Wiki display name (e.g., "My Knowledge Base")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Short description of the wiki
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 impl WikiConfig {
+    /// Get wiki display name, falling back to "Wistra"
+    pub fn display_name(&self) -> &str {
+        self.name.as_deref().unwrap_or("Wistra")
+    }
+
     /// Load from <wiki>/.wistra/config.toml
     pub fn load(wiki_path: &PathBuf) -> Result<Self> {
         let config_path = wiki_path.join(".wistra").join("config.toml");
@@ -89,7 +100,24 @@ impl WikiConfig {
 
         Ok(WikiConfig {
             root_path: wiki_path.clone(),
+            name: None,
+            description: None,
         })
+    }
+
+    /// Save to <wiki>/.wistra/config.toml
+    pub fn save(&self) -> Result<()> {
+        let config_path = self.wistra_dir().join("config.toml");
+        // Ensure directory exists
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)
+                .context("Failed to create .wistra directory")?;
+        }
+        let content = toml::to_string_pretty(self)
+            .context("Failed to serialize wiki config")?;
+        std::fs::write(&config_path, content)
+            .context("Failed to write wiki config file")?;
+        Ok(())
     }
 
     /// Get concepts directory path
