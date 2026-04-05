@@ -61,6 +61,19 @@ fn protect_latex(text: &str) -> (String, Vec<(String, String)>) {
     (result, placeholders)
 }
 
+/// Truncate a UTF-8 string to a maximum number of characters, appending "..." if truncated.
+pub fn truncate_utf8(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let boundary = s.char_indices()
+            .nth(max_chars)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..boundary])
+    }
+}
+
 /// Convert [[wikilinks]] to HTML links
 fn convert_wikilinks(text: &str) -> String {
     let re = Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
@@ -129,5 +142,30 @@ mod tests {
         let md = "Block math:\n\n$$\\int_0^1 x dx$$\n\nDone.";
         let html = render_markdown(md);
         assert!(html.contains("$$"));
+    }
+
+    #[test]
+    fn test_truncate_utf8_short() {
+        assert_eq!(truncate_utf8("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_utf8_exact() {
+        assert_eq!(truncate_utf8("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_utf8_truncate() {
+        assert_eq!(truncate_utf8("hello world", 5), "hello...");
+    }
+
+    #[test]
+    fn test_truncate_utf8_korean() {
+        assert_eq!(truncate_utf8("머신러닝알고리즘", 4), "머신러닝...");
+    }
+
+    #[test]
+    fn test_truncate_utf8_empty() {
+        assert_eq!(truncate_utf8("", 10), "");
     }
 }
