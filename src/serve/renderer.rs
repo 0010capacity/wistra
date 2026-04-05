@@ -74,6 +74,38 @@ pub fn truncate_utf8(s: &str, max_chars: usize) -> String {
     }
 }
 
+/// Heading extracted from HTML for TOC generation
+pub struct Heading {
+    pub level: u8,
+    pub id: String,
+    pub text: String,
+}
+
+/// Extract h2 and h3 headings from HTML in document order
+pub fn extract_headings(html: &str) -> Vec<Heading> {
+    let h2_re = regex::Regex::new(r"<h2>(.*?)</h2>").unwrap();
+    let h3_re = regex::Regex::new(r"<h3>(.*?)</h3>").unwrap();
+    let mut headings: Vec<(usize, u8, String)> = Vec::new();
+
+    for cap in h2_re.captures_iter(html) {
+        let pos = html.find(&cap[0]).unwrap_or(0);
+        headings.push((pos, 2, cap[1].to_string()));
+    }
+    for cap in h3_re.captures_iter(html) {
+        let pos = html.find(&cap[0]).unwrap_or(0);
+        headings.push((pos, 3, cap[1].to_string()));
+    }
+    headings.sort_by_key(|(pos, _, _)| *pos);
+
+    headings
+        .into_iter()
+        .map(|(_, level, text)| {
+            let id = text.replace(' ', "-");
+            Heading { level, id, text }
+        })
+        .collect()
+}
+
 /// Convert [[wikilinks]] to HTML links
 fn convert_wikilinks(text: &str) -> String {
     let re = Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
@@ -167,5 +199,31 @@ mod tests {
     #[test]
     fn test_truncate_utf8_empty() {
         assert_eq!(truncate_utf8("", 10), "");
+    }
+
+    #[test]
+    fn test_extract_headings_basic() {
+        let html = r#"<h2>개요</h2><p>text</p><h3>상세</h3><p>more</p><h2>결론</h2>"#;
+        let headings = extract_headings(html);
+        assert_eq!(headings.len(), 3);
+        assert_eq!(headings[0].level, 2);
+        assert_eq!(headings[0].text, "개요");
+        assert_eq!(headings[1].level, 3);
+        assert_eq!(headings[1].text, "상세");
+        assert_eq!(headings[2].level, 2);
+        assert_eq!(headings[2].text, "결론");
+    }
+
+    #[test]
+    fn test_extract_headings_empty() {
+        let headings = extract_headings("<p>no headings</p>");
+        assert!(headings.is_empty());
+    }
+
+    #[test]
+    fn test_extract_headings_id_from_korean() {
+        let html = r#"<h2>주요 유형</h2>"#;
+        let headings = extract_headings(html);
+        assert_eq!(headings[0].id, "주요-유형");
     }
 }
