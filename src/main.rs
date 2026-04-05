@@ -200,16 +200,21 @@ fn run_export(wiki_path: &str, output: &str, targets: &[String], project: Option
 
                     match deploy_output {
                         Ok(output) if output.status.success() => {
-                            let stdout = String::from_utf8_lossy(&output.stdout);
-                            let mut found_url = false;
-                            for line in stdout.lines() {
-                                if line.trim().starts_with("https://") {
-                                    println!("🌐 {}", line.trim());
-                                    found_url = true;
-                                    break;
-                                }
-                            }
-                            if !found_url {
+                            // wrangler outputs to both stdout and stderr
+                            let combined = format!(
+                                "{}\n{}",
+                                String::from_utf8_lossy(&output.stdout),
+                                String::from_utf8_lossy(&output.stderr)
+                            );
+                            // Look for URL anywhere in output (wrangler puts it mid-line)
+                            if let Some(pos) = combined.find("https://") {
+                                let after = &combined[pos..];
+                                let end = after.find(|c: char| c.is_whitespace() || c == '\'' || c == '"')
+                                    .map(|i| pos + i)
+                                    .unwrap_or(combined.len());
+                                let url = &combined[pos..end];
+                                println!("🌐 {}", url);
+                            } else {
                                 println!("🌐 https://{}.pages.dev", project_name);
                             }
                         }
