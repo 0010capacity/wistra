@@ -255,6 +255,21 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Export wiki as a static site for hosting
+    Export {
+        /// Path to wiki directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Output directory for exported files
+        #[arg(short, long, default_value = "dist")]
+        output: String,
+
+        /// Hosting target: firebase, cloudflare, or both
+        #[arg(short, long, value_delimiter = ',', default_value = "firebase")]
+        target: Vec<String>,
+    },
+
     /// Start HTTP server to browse wiki
     Serve {
         /// Path to wiki directory

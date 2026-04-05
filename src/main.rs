@@ -97,6 +97,9 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Serve { path, port, host, open }) => {
             serve::serve(&path, &host, port, open).await?;
         }
+        Some(cli::Commands::Export { path, output, target }) => {
+            run_export(&path, &output, &target)?;
+        }
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;
         }
@@ -113,6 +116,24 @@ fn run_import(source: &str, path: &str, dry_run: bool, json: bool) -> Result<()>
     let wiki_path = PathBuf::from(shellexpand::tilde(path).to_string());
     let wiki_config = config::WikiConfig::load(&wiki_path)?;
     importer::import_path(&source_path, &wiki_config, dry_run, json)?;
+    Ok(())
+}
+
+fn run_export(wiki_path: &str, output: &str, targets: &[String]) -> Result<()> {
+    use serve::exporter::{export, HostingTarget};
+
+    let wiki_path = PathBuf::from(shellexpand::tilde(wiki_path).to_string());
+    let output_dir = std::path::PathBuf::from(output);
+
+    let target = if targets.iter().any(|t| t.eq_ignore_ascii_case("both")) {
+        HostingTarget::Both
+    } else if targets.iter().any(|t| t.eq_ignore_ascii_case("cloudflare")) {
+        HostingTarget::Cloudflare
+    } else {
+        HostingTarget::Firebase
+    };
+
+    export(&wiki_path, &output_dir, target)?;
     Ok(())
 }
 

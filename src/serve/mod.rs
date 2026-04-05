@@ -1,5 +1,6 @@
 /// HTTP server for browsing the wiki
 
+pub mod exporter;
 mod renderer;
 mod templates;
 
