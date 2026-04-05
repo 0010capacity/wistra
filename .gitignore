@@ -1,3 +1,6 @@
 firebase-debug.log
 .superpowers/
 .worktrees/
+target/
+.wrangler/
+dist/

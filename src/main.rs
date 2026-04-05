@@ -122,7 +122,14 @@ fn run_import(source: &str, path: &str, dry_run: bool, json: bool) -> Result<()>
 fn run_export(wiki_path: &str, output: &str, targets: &[String], project: Option<&str>, deploy: bool) -> Result<()> {
     use serve::exporter::{export, HostingTarget};
 
-    let wiki_path = PathBuf::from(shellexpand::tilde(wiki_path).to_string());
+    // Use global config's wiki path if not specified
+    let wiki_path = if wiki_path == "." {
+        config::GlobalConfig::load()?
+            .and_then(|c| c.wiki_path)
+            .context("No default wiki path. Run `wistra onboard` first or specify a path.")?
+    } else {
+        PathBuf::from(shellexpand::tilde(wiki_path).to_string())
+    };
     let output_dir = std::path::PathBuf::from(output);
 
     // Auto-derive project name from wiki path
