@@ -178,7 +178,7 @@ async fn handle_home(state: WikiState) -> Result<impl Reply, Rejection> {
     let published = docs.iter().filter(|d| d.status == "published").count();
     let stubs = docs.iter().filter(|d| d.status == "stub").count();
     let tag_count = report.tag_stats.unique_tags;
-    let html = templates::home_template(&recent, random, total, published, stubs, tag_count);
+    let html = templates::home_template(&recent, random, total, published, stubs, tag_count, None);
     Ok(warp::reply::html(html).into_response())
 }
 

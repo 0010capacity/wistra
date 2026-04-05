@@ -11,6 +11,7 @@ use crate::serve::templates::{
 use crate::serve::{DocumentInfo, SearchResultInfo};
 use crate::types::{Document, Status};
 use anyhow::{Context, Result};
+use chrono::Local;
 use rand::seq::SliceRandom;
 use std::collections::HashSet;
 use std::path::Path;
@@ -136,7 +137,8 @@ fn render_home(output_dir: &Path, docs: &[DocumentInfo], total: usize, tag_count
     let published = docs.iter().filter(|d| d.status == "published").count();
     let stubs = docs.iter().filter(|d| d.status == "stub").count();
 
-    let html = home_template(&recent, random, total, published, stubs, tag_count);
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let html = home_template(&recent, random, total, published, stubs, tag_count, Some(&timestamp));
     write_file(output_dir.join("index.html"), &html)
 }
 

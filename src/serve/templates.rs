@@ -70,6 +70,7 @@ pub fn base_template(
     sidebar_html: &str,
     outline_html: &str,
     main_content: &str,
+    build_timestamp: Option<&str>,
 ) -> String {
     fn nav_item(href: &str, label: &str, icon: &str, active_nav: &str, current: &str) -> String {
         let active = if current == active_nav { " nav-link-active" } else { "" };
@@ -870,11 +871,17 @@ function closeSheets() {{
 
 <!-- ── Footer ── -->
 <footer>
-    Powered by <a href="https://github.com/wistra/wistra">Wistra</a>
+    {}
+    <span style="margin-left:1rem;">Powered by <a href="https://github.com/wistra/wistra">Wistra</a></span>
 </footer>
 
 </body>
 </html>"##,
+        build_info = if let Some(ts) = build_timestamp {
+            format!("<span style=\"color:var(--muted);\">Build: {}</span>", ts)
+        } else {
+            String::new()
+        },
         title = title,
         nav_home = nav_item("/", "Home", ICON_HOME, active_nav, "home"),
         nav_all = nav_item("/all", "All Pages", ICON_FILE_TEXT, active_nav, "all"),
@@ -902,6 +909,7 @@ pub fn home_template(
     published: usize,
     stubs: usize,
     tag_count: usize,
+    build_timestamp: Option<&str>,
 ) -> String {
     // ── Sidebar: recent docs ──
     let recent_sidebar: String = recent
@@ -1016,7 +1024,7 @@ pub fn home_template(
         quick_links
     );
 
-    base_template("Home", "home", &sidebar_html, "", &main_content)
+    base_template("Home", "home", &sidebar_html, "", &main_content, build_timestamp)
 }
 
 /// Single document page with TOC, metadata, and backlinks.
@@ -1131,7 +1139,7 @@ pub fn page_template(
         )
     };
 
-    base_template(&doc.title, "home", &sidebar_html, &outline_html, &main_content)
+    base_template(&doc.title, "home", &sidebar_html, &outline_html, &main_content, None)
 }
 
 /// All pages listing with filter bar and grid/list toggle.
@@ -1258,7 +1266,7 @@ pub fn all_pages_template(
         )
     };
 
-    base_template("All Pages", "all", &sidebar_html, "", &main_content)
+    base_template("All Pages", "all", &sidebar_html, "", &main_content, None)
 }
 
 /// Search results page.
@@ -1333,7 +1341,7 @@ pub fn search_results_template(query: &str, results: &[SearchResultInfo]) -> Str
         cards
     );
 
-    base_template(&format!("Search: {}", query), "home", "", "", &main_content)
+    base_template(&format!("Search: {}", query), "home", "", "", &main_content, None)
 }
 
 /// Tags overview page with tag cloud.
@@ -1343,7 +1351,7 @@ pub fn tags_template(tags: &[(String, usize)]) -> String {
             <h1>Tags</h1>
             <p>No tags found.</p>
         </article>"#.to_string();
-        return base_template("Tags", "tags", "", "", &main);
+        return base_template("Tags", "tags", "", "", &main, None);
     }
 
     // Compute font size range based on doc count
@@ -1375,7 +1383,7 @@ pub fn tags_template(tags: &[(String, usize)]) -> String {
         tag_cloud
     );
 
-    base_template("Tags", "tags", "", "", &main_content)
+    base_template("Tags", "tags", "", "", &main_content, None)
 }
 
 /// Documents filtered by a specific tag.
@@ -1429,7 +1437,7 @@ pub fn tag_page_template(tag: &str, docs: &[DocumentInfo]) -> String {
         ICON_TAG
     );
 
-    base_template(&format!("Tag: {}", tag), "tags", &sidebar_html, "", &main_content)
+    base_template(&format!("Tag: {}", tag), "tags", &sidebar_html, "", &main_content, None)
 }
 
 /// Graph page with interactive network visualization.
@@ -1542,7 +1550,7 @@ pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) ->
 
     // Override layout: hide sidebar/outline on graph page
     // Pass empty sidebar/outline; the graph page is full-width
-    base_template("Knowledge Graph", "graph", "", "", &main_content)
+    base_template("Knowledge Graph", "graph", "", "", &main_content, None)
 }
 
 /// 404 not found page.
@@ -1576,5 +1584,5 @@ pub fn not_found_template(title: &str) -> String {
         title
     );
 
-    base_template("Not Found", "home", "", "", &main_content)
+    base_template("Not Found", "home", "", "", &main_content, None)
 }
