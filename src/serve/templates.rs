@@ -84,7 +84,7 @@ pub fn base_template(
     }
 
     format!(
-        r#"<!DOCTYPE html>
+        r##"<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -878,7 +878,7 @@ function closeSheets() {{
 </footer>
 
 </body>
-</html>"#,
+</html>"##,
         title = title,
         nav_home = nav_item("/", "Home", ICON_HOME, active_nav, "home"),
         nav_all = nav_item("/all", "All Pages", ICON_FILE_TEXT, active_nav, "all"),
@@ -1071,13 +1071,13 @@ pub fn page_template(
             <div class="doc-meta">
                 {} {}
                 <span>{}</span>
-                {}
-                {}
+                <br>
+                <span>{}</span>
             </div>
             {}
             {}
             {}
-        </article>"##,
+        </article>"#,
         doc.title,
         status_badge(&doc.status),
         doc.created,
@@ -1119,8 +1119,8 @@ pub fn page_template(
         .map(|h| {
             let cls = if h.level == 3 { "toc-h3" } else { "toc-h2" };
             format!(
-                r#"<li><a href="#{}" class="{}">{}</a></li>"#,
-                h.id, cls, h.text
+                r#"<li><a href="{}{}" class="{}">{}</a></li>"#,
+                "#", h.id, cls, h.text
             )
         })
         .collect::<Vec<_>>()
@@ -1166,10 +1166,10 @@ pub fn all_pages_template(
                 onkeydown="if(event.key==='Enter'){{updateQueryParam('q',document.getElementById('search-input').value)}}">
             <div class="view-toggle">
                 <button class="active" onclick="setView('grid', this)" title="Grid view">
-                    <span class="icon">{ICON_LAYOUT_GRID}</span>
+                    <span class="icon">{}</span>
                 </button>
                 <button onclick="setView('list', this)" title="List view">
-                    <span class="icon">{ICON_LIST}</span>
+                    <span class="icon">{}</span>
                 </button>
             </div>
         </div>
@@ -1443,7 +1443,7 @@ pub fn graph_template(documents: &[DocumentInfo], links: &[(String, String)]) ->
         .map(|doc| {
             format!(
                 r#"{{"id": "{}", "label": "{}", "title": "{}"}}"#,
-                doc.title.replace('"', "\\\""),
+                doc.title.replace('"', "\\\"").replace('\'', "\\'"),
                 truncate_label(&doc.title, 20),
                 doc.title.replace('"', "\\\"")
             )

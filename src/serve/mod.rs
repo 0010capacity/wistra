@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use warp::http::StatusCode;
 use warp::Filter;
+use warp::Rejection;
 use warp::Reply;
 
 use templates::{
