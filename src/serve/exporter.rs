@@ -84,11 +84,17 @@ pub fn export(
 
     // ── Generate hosting config ──
     match target {
-        HostingTarget::Firebase | HostingTarget::Both => {
+        HostingTarget::Both => {
+            render_firebase_config(output_dir)?;
+            println!("   firebase.json generated");
+            render_cloudflare_redirects(output_dir)?;
+            println!("   _redirects generated");
+        }
+        HostingTarget::Firebase => {
             render_firebase_config(output_dir)?;
             println!("   firebase.json generated");
         }
-        HostingTarget::Cloudflare | HostingTarget::Both => {
+        HostingTarget::Cloudflare => {
             render_cloudflare_redirects(output_dir)?;
             println!("   _redirects generated");
         }
