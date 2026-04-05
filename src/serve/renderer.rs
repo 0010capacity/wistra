@@ -24,7 +24,23 @@ pub fn render_markdown(markdown: &str) -> String {
         html_output = html_output.replace(placeholder, original);
     }
 
-    html_output
+    // Inject id attributes into h2/h3 headings for TOC anchor links
+    let h2_re = Regex::new(r"<h2(?:\s[^>]*)?>(.*?)</h2>").unwrap();
+    let h3_re = Regex::new(r"<h3(?:\s[^>]*)?>(.*?)</h3>").unwrap();
+
+    let result = h2_re.replace_all(&html_output, |caps: &regex::Captures| {
+        let text = &caps[1];
+        let id = text.replace(' ', "-");
+        format!(r#"<h2 id="{}">{}</h2>"#, id, text)
+    }).to_string();
+
+    let result = h3_re.replace_all(&result, |caps: &regex::Captures| {
+        let text = &caps[1];
+        let id = text.replace(' ', "-");
+        format!(r#"<h3 id="{}">{}</h3>"#, id, text)
+    }).to_string();
+
+    result
 }
 
 /// Replace LaTeX expressions with placeholders to survive markdown processing.
@@ -238,5 +254,13 @@ mod tests {
         assert_eq!(headings[0].level, 2);
         assert_eq!(headings[1].text, "상세");
         assert_eq!(headings[1].level, 3);
+    }
+
+    #[test]
+    fn test_render_markdown_injects_heading_ids() {
+        let md = "## 개요\n\nSome text\n\n## 주요 유형\n\nMore text";
+        let html = render_markdown(md);
+        assert!(html.contains(r#"<h2 id="개요">"#), "h2 should have id attribute");
+        assert!(html.contains(r#"<h2 id="주요-유형">"#), "h2 id should have dashes for spaces");
     }
 }
