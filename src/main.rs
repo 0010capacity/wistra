@@ -97,8 +97,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Serve { path, port, host, open }) => {
             serve::serve(&path, &host, port, open).await?;
         }
-        Some(cli::Commands::Export { path, output, target }) => {
-            run_export(&path, &output, &target)?;
+        Some(cli::Commands::Export { path, output, hosting }) => {
+            run_export(&path, &output, &hosting)?;
         }
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;

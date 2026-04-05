@@ -267,7 +267,7 @@ pub enum Commands {
 
         /// Hosting target: firebase, cloudflare, or both
         #[arg(short, long, value_delimiter = ',', default_value = "firebase")]
-        target: Vec<String>,
+        hosting: Vec<String>,
     },
 
     /// Start HTTP server to browse wiki
