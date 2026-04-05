@@ -266,7 +266,7 @@ pub enum Commands {
         output: String,
 
         /// Hosting target: firebase, cloudflare, or both
-        #[arg(short, long, value_delimiter = ',', default_value = "firebase")]
+        #[arg(long, value_delimiter = ',', default_value = "firebase")]
         hosting: Vec<String>,
     },
 

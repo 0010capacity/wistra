@@ -94,6 +94,24 @@ pub fn export(
         }
     }
 
+    println!();
+    println!("🌐 Deploy to:");
+    match target {
+        HostingTarget::Firebase => {
+            println!("   Firebase: https://<your-project>.web.app");
+            println!("              firebase deploy --only hosting");
+        }
+        HostingTarget::Cloudflare => {
+            println!("   Cloudflare: https://<your-project>.pages.dev");
+            println!("               wrangler pages deploy {}", output_dir.display());
+        }
+        HostingTarget::Both => {
+            println!("   Firebase:  https://<your-project>.web.app");
+            println!("              firebase deploy --only hosting");
+            println!("   Cloudflare: https://<your-project>.pages.dev");
+            println!("               wrangler pages deploy {}", output_dir.display());
+        }
+    }
     println!("✅ Export complete!");
     Ok(())
 }
