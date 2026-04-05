@@ -277,6 +277,18 @@ pub fn base_template(title: &str, content: &str) -> String {
             }}
         }}
     </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body, {{
+            delimiters: [
+                {{left: '$$', right: '$$', display: true}},
+                {{left: '$', right: '$', display: false}},
+                {{left: '\\\\(', right: '\\\\)', display: false}},
+                {{left: '\\\\[', right: '\\\\]', display: true}}
+            ],
+            throwOnError: false
+        }});"></script>
 </head>
 <body>
     <div class="container">

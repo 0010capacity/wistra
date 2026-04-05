@@ -1,14 +1,14 @@
-/// Markdown to HTML renderer with wikilink support
+/// Markdown to HTML renderer with wikilink and LaTeX support
 
 use pulldown_cmark::{html, Options, Parser};
 use regex::Regex;
 
 /// Render markdown to HTML with wikilink resolution
 pub fn render_markdown(markdown: &str) -> String {
-    // First, convert wikilinks to HTML links
-    let processed = convert_wikilinks(markdown);
+    // Protect LaTeX from markdown processing, then restore after rendering
+    let (processed, placeholders) = protect_latex(markdown);
+    let processed = convert_wikilinks(&processed);
 
-    // Then render markdown
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -19,14 +19,50 @@ pub fn render_markdown(markdown: &str) -> String {
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
 
+    // Restore LaTeX placeholders
+    for (placeholder, original) in &placeholders {
+        html_output = html_output.replace(placeholder, original);
+    }
+
     html_output
+}
+
+/// Replace LaTeX expressions with placeholders to survive markdown processing.
+/// Display math ($$...$$) is replaced first, then inline ($...$).
+fn protect_latex(text: &str) -> (String, Vec<(String, String)>) {
+    let mut result = text.to_string();
+    let mut placeholders: Vec<(String, String)> = Vec::new();
+    let mut counter = 0;
+
+    // Protect display math: $$...$$
+    let display_re = Regex::new(r"\$\$([\s\S]*?)\$\$").unwrap();
+    result = display_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            let key = format!("%%LATEX_DISPLAY_{}%%", counter);
+            counter += 1;
+            placeholders.push((key.clone(), format!("$${}$$", &caps[1])));
+            key
+        })
+        .to_string();
+
+    // Protect inline math: $...$
+    // After display math is replaced, remaining $ are inline.
+    // Use simple pattern: $ (non-$ content) $
+    let inline_re = Regex::new(r"\$([^$\n]+?)\$").unwrap();
+    result = inline_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            let key = format!("%%LATEX_INLINE_{}%%", counter);
+            counter += 1;
+            placeholders.push((key.clone(), format!("${}$", &caps[1])));
+            key
+        })
+        .to_string();
+
+    (result, placeholders)
 }
 
 /// Convert [[wikilinks]] to HTML links
 fn convert_wikilinks(text: &str) -> String {
-    // Pattern: [[Target]] or [[Target|Display Text]]
-    // Matches: [[Foo]] -> <a href="/page/Foo">Foo</a>
-    //          [[Foo|Bar]] -> <a href="/page/Foo">Bar</a>
     let re = Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
 
     re.replace_all(text, |caps: &regex::Captures| {
@@ -79,5 +115,19 @@ mod tests {
         let md = "| A | B |\n|---|---|\n| 1 | 2 |";
         let html = render_markdown(md);
         assert!(html.contains("<table>"));
+    }
+
+    #[test]
+    fn test_inline_latex_preserved() {
+        let md = "The formula $E = mc^2$ is famous.";
+        let html = render_markdown(md);
+        assert!(html.contains("$E = mc^2$"));
+    }
+
+    #[test]
+    fn test_display_latex_preserved() {
+        let md = "Block math:\n\n$$\\int_0^1 x dx$$\n\nDone.";
+        let html = render_markdown(md);
+        assert!(html.contains("$$"));
     }
 }
