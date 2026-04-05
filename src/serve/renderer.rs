@@ -123,6 +123,40 @@ pub fn extract_headings(html: &str) -> Vec<Heading> {
         .collect()
 }
 
+/// Extract the first non-empty paragraph from markdown content as a summary.
+/// Strips wikilinks, bold, italic formatting. Truncates to 200 chars using truncate_utf8.
+pub fn extract_summary(content: &str, title: &str) -> String {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with('#')
+            || trimmed.starts_with("$$")
+            || trimmed.starts_with("```")
+            || trimmed.starts_with('|')
+            || trimmed.starts_with('>')
+            || trimmed.starts_with("- [")
+            || trimmed.starts_with("* [")
+        {
+            continue;
+        }
+        // Strip markdown formatting: bold, italic, inline code
+        let stripped = trimmed
+            .replace(|c: char| c == '*' || c == '_', "")
+            .replacen("`", "", 10);
+        // Strip wikilinks: [[Target]] -> Target, [[Target|Display]] -> Display
+        let wikilink_re = regex::Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
+        let clean = wikilink_re.replace_all(&stripped, |caps: &regex::Captures| {
+            if let Some(display) = caps.get(2) {
+                display.as_str().to_string()
+            } else {
+                caps[1].to_string()
+            }
+        }).to_string();
+        return truncate_utf8(&clean, 200);
+    }
+    format!("{} — 상세 내용을 확인하세요.", title)
+}
+
 /// Convert [[wikilinks]] to HTML links
 fn convert_wikilinks(text: &str) -> String {
     let re = Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]").unwrap();
@@ -262,5 +296,35 @@ mod tests {
         let html = render_markdown(md);
         assert!(html.contains(r#"<h2 id="개요">"#), "h2 should have id attribute");
         assert!(html.contains(r#"<h2 id="주요-유형">"#), "h2 id should have dashes for spaces");
+    }
+
+    #[test]
+    fn test_extract_summary_basic() {
+        let md = "# Title\n\nFirst paragraph with some text.\n\nSecond paragraph.";
+        let summary = extract_summary(md, "Title");
+        assert!(summary.starts_with("First paragraph"));
+    }
+
+    #[test]
+    fn test_extract_summary_strips_wikilinks() {
+        let md = "# Title\n\nSee [[Python]] for details about [[AI|인공지능]].";
+        let summary = extract_summary(md, "Title");
+        assert!(!summary.contains("[["), "should strip wikilink syntax");
+        assert!(summary.contains("Python"), "should keep link text");
+    }
+
+    #[test]
+    fn test_extract_summary_fallback() {
+        let md = "# Title\n\n$$x^2$$\n\n```code```";
+        let summary = extract_summary(md, "수학");
+        assert!(summary.contains("수학"), "fallback should include title");
+    }
+
+    #[test]
+    fn test_extract_summary_truncates() {
+        let long_text = "a".repeat(300);
+        let md = format!("# Title\n\n{}", long_text);
+        let summary = extract_summary(&md, "Title");
+        assert!(summary.len() < 250, "should truncate to ~200 chars + ellipsis");
     }
 }
