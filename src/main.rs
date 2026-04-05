@@ -97,8 +97,8 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Serve { path, port, host, open }) => {
             serve::serve(&path, &host, port, open).await?;
         }
-        Some(cli::Commands::Export { path, output, hosting }) => {
-            run_export(&path, &output, &hosting)?;
+        Some(cli::Commands::Export { path, output, hosting, project, deploy }) => {
+            run_export(&path, &output, &hosting, project.as_deref(), deploy)?;
         }
         Some(cli::Commands::Dedup { path, threshold, json }) => {
             run_dedup(&path, threshold, json)?;
@@ -119,11 +119,24 @@ fn run_import(source: &str, path: &str, dry_run: bool, json: bool) -> Result<()>
     Ok(())
 }
 
-fn run_export(wiki_path: &str, output: &str, targets: &[String]) -> Result<()> {
+fn run_export(wiki_path: &str, output: &str, targets: &[String], project: Option<&str>, deploy: bool) -> Result<()> {
     use serve::exporter::{export, HostingTarget};
 
     let wiki_path = PathBuf::from(shellexpand::tilde(wiki_path).to_string());
     let output_dir = std::path::PathBuf::from(output);
+
+    // Auto-derive project name from wiki path
+    let project_name = project.map(String::from).unwrap_or_else(|| {
+        wiki_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("wistra-wiki")
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string()
+    });
 
     let target = if targets.iter().any(|t| t.eq_ignore_ascii_case("both")) {
         HostingTarget::Both
@@ -134,6 +147,87 @@ fn run_export(wiki_path: &str, output: &str, targets: &[String]) -> Result<()> {
     };
 
     export(&wiki_path, &output_dir, target)?;
+
+    // ── Deploy if requested ──
+    if deploy {
+        match target {
+            HostingTarget::Firebase | HostingTarget::Both => {
+                // Check if firebase CLI is available
+                if std::process::Command::new("firebase").arg("--version").output().is_ok() {
+                    println!();
+                    println!("🚀 Deploying to Firebase...");
+                    let status = std::process::Command::new("firebase")
+                        .args(["deploy", "--only", "hosting"])
+                        .current_dir(&output_dir)
+                        .status()?;
+                    if status.success() {
+                        println!("🌐 https://{}.web.app", project_name);
+                    }
+                } else {
+                    println!("⚠️  firebase CLI not found. Run: npm install -g firebase-tools");
+                }
+            }
+            HostingTarget::Cloudflare => {}
+        }
+
+        match target {
+            HostingTarget::Cloudflare | HostingTarget::Both => {
+                // Check if wrangler CLI is available
+                if std::process::Command::new("wrangler").arg("--version").output().is_ok() {
+                    println!();
+                    println!("🚀 Deploying to Cloudflare Pages...");
+
+                    // Try to create the project if it doesn't exist
+                    let create_status = std::process::Command::new("wrangler")
+                        .args(["pages", "project", "create", &project_name, "--production-branch", "main"])
+                        .output();
+
+                    if let Ok(output) = create_status {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        if stderr.contains("already exists") || output.status.success() {
+                            // Project exists or was created, proceed
+                        } else {
+                            // Project creation failed, but continue - deploy might still work
+                        }
+                    }
+
+                    // Deploy
+                    let deploy_output = std::process::Command::new("wrangler")
+                        .args(["pages", "deploy", output_dir.to_str().unwrap()])
+                        .arg("--project-name")
+                        .arg(&project_name)
+                        .output();
+
+                    match deploy_output {
+                        Ok(output) if output.status.success() => {
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            let mut found_url = false;
+                            for line in stdout.lines() {
+                                if line.trim().starts_with("https://") {
+                                    println!("🌐 {}", line.trim());
+                                    found_url = true;
+                                    break;
+                                }
+                            }
+                            if !found_url {
+                                println!("🌐 https://{}.pages.dev", project_name);
+                            }
+                        }
+                        Ok(output) => {
+                            eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️  Deployment failed: {}", e);
+                        }
+                    }
+                } else {
+                    println!("⚠️  wrangler CLI not found. Run: npm install -g wrangler");
+                }
+            }
+            HostingTarget::Firebase => {}
+        }
+    }
+
     Ok(())
 }
 

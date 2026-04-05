@@ -268,6 +268,14 @@ pub enum Commands {
         /// Hosting target: firebase, cloudflare, or both
         #[arg(long, value_delimiter = ',', default_value = "firebase")]
         hosting: Vec<String>,
+
+        /// Project name (auto-derived from wiki name if not set)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Deploy to hosting immediately after export
+        #[arg(long)]
+        deploy: bool,
     },
 
     /// Start HTTP server to browse wiki
