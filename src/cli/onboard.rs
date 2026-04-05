@@ -1,3 +1,4 @@
+use crate::cli::cron::install_cron;
 use crate::config::{GlobalConfig, WikiConfig, INTEREST_DOMAINS, LANGUAGES, ensure_global_config_dir};
 use anyhow::{Context, Result};
 use dialoguer::{Input, Select, MultiSelect};
@@ -99,10 +100,11 @@ pub fn run_onboard() -> Result<()> {
 
     println!("✅ Directory structure initialized");
 
-    // Print cron line if requested
+    // Install cron job if requested
     if setup_cron {
-        println!("\n📝 Add this line to your crontab (crontab -e):");
-        println!("    {} {} * * * wistra run --quiet --no-confirm", cron_minute, cron_hour);
+        println!("\n⏰ Setting up cron job...");
+        install_cron(cron_hour, cron_minute, false)?;
+        println!("✅ Cron job installed!");
     }
 
     println!("\n🎉 Setup complete! Run `wistra run` to start growing your wiki.");

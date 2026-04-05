@@ -311,22 +311,27 @@ async fn handle_page(title: String, state: WikiState) -> Result<impl warp::Reply
 
 /// Find document by title or alias
 fn find_document<'a>(report: &'a ScanReport, title: &str) -> Option<&'a Document> {
-    // First try exact title match
-    if let Some(doc) = report.documents.get(title) {
-        return Some(doc);
+    // Try exact title match first
+    for doc in report.documents.values() {
+        if doc.title == title {
+            return Some(doc);
+        }
     }
 
-    // Try URL-decoded title
+    // Try URL-decoded title match
     let decoded = urlencoding::decode(title).ok()?.to_string();
-    if let Some(doc) = report.documents.get(&decoded) {
-        return Some(doc);
+    for doc in report.documents.values() {
+        if doc.title == decoded {
+            return Some(doc);
+        }
     }
 
-    // Try matching by alias
+    // Try matching by alias (case-insensitive)
     for doc in report.documents.values() {
         if doc.aliases.iter().any(|a| {
-            a.to_lowercase() == title.to_lowercase()
-                || urlencoding::decode(a).map(|d| d.to_string()).unwrap_or_default().to_lowercase() == decoded.to_lowercase()
+            let a_lower = a.to_lowercase();
+            let title_lower = title.to_lowercase();
+            a_lower == title_lower || a_lower == decoded.to_lowercase()
         }) {
             return Some(doc);
         }
