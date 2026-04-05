@@ -20,7 +20,7 @@ use templates::{
     all_pages_template, graph_template, home_template, not_found_template, page_template,
     search_results_template, tag_page_template, tags_template, SearchResult,
 };
-use renderer::{render_markdown, extract_summary};
+use renderer::{extract_headings, extract_summary, render_markdown};
 
 /// Start the HTTP server
 pub async fn serve(path: &str, host: &str, port: u16, open: bool) -> Result<()> {
@@ -320,47 +320,19 @@ async fn handle_search(
 }
 
 /// Handle individual page
-async fn handle_page(title: String, state: WikiState) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_page(title: String, state: WikiState) -> Result<impl Reply, Rejection> {
     let report = state.report.read().await;
-
-    // Try to find document by exact title or alias
-    let doc = find_document(&report, &title);
-
-    match doc {
+    match find_document(&report, &title) {
         Some(doc) => {
-            let html_body = render_markdown(&doc.body);
-            let created = doc.created.format("%Y-%m-%d").to_string();
-
-            // Get backlinks
-            let backlinks: Vec<String> = report
-                .link_graph
-                .incoming_links
-                .get(&doc.title)
-                .map(|links| {
-                    links
-                        .iter()
-                        .map(|l| l.source_file.trim_end_matches(".md").to_string())
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let html = page_template(
-                &doc.title,
-                &html_body,
-                &doc.status.to_string(),
-                &doc.tags,
-                &created,
-                &doc.aliases,
-                &backlinks,
-            );
-
+            let html_body = renderer::render_markdown(&doc.body);
+            let headings = renderer::extract_headings(&html_body);
+            let info = doc_to_info(doc, &report);
+            let html = templates::page_template(&info, &html_body, &headings);
             Ok(warp::reply::html(html).into_response())
         }
         None => {
-            let html = not_found_template(&title);
-            let mut response = warp::reply::html(html).into_response();
-            *response.status_mut() = StatusCode::NOT_FOUND;
-            Ok(response)
+            let html = templates::not_found_template(&title);
+            Ok(warp::reply::with_status(html, StatusCode::NOT_FOUND).into_response())
         }
     }
 }
