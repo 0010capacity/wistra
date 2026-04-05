@@ -118,3 +118,69 @@ Find unused tags (no documents).
 ```
 wistra tags orphans [path]
 ```
+
+## Serve & Export Commands
+
+### serve
+Start HTTP server to browse wiki locally.
+```
+wistra serve [path] [--port N] [--host ADDR] [--open]
+```
+
+Options:
+- `--port, -p` — Port to listen on (default: 15432)
+- `--host` — Host address to bind (default: 127.0.0.1)
+- `--open, -o` — Open browser automatically
+
+### export
+Export wiki as static site for hosting.
+```
+wistra export [path] [-o DIR] [--hosting TARGET] [--project NAME] [--deploy]
+```
+
+Options:
+- `--output, -o` — Output directory (default: dist)
+- `--hosting` — Hosting target: firebase, cloudflare, or both (default: firebase)
+- `--project` — Project name (auto-derived from wiki name if not set)
+- `--deploy` — Deploy to hosting immediately after export
+
+Examples:
+```bash
+# Export for Cloudflare Pages
+wistra export --hosting=cloudflare
+
+# Export and deploy to Cloudflare (creates project if needed)
+wistra export --hosting=cloudflare --deploy
+
+# Export for Firebase Hosting
+wistra export --hosting=firebase --deploy
+
+# Export with custom project name
+wistra export --hosting=cloudflare --deploy --project my-wiki
+```
+
+## Utilities
+
+### dedup
+Detect duplicate or similar documents.
+```
+wistra dedup [path] [--threshold N] [--json]
+```
+
+### clean
+Detect and fix wiki technical debt.
+```
+wistra clean [path] [--dry-run] [--fix] [--json]
+```
+
+### import
+Import external markdown files.
+```
+wistra import <source> [path] [--dry-run] [--json]
+```
+
+### cron
+Manage scheduled runs.
+```
+wistra cron [--set HH:MM] [--install] [--show] [--remove] [--no-git]
+```
