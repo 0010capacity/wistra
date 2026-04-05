@@ -81,18 +81,19 @@ pub struct Heading {
     pub text: String,
 }
 
-/// Extract h2 and h3 headings from HTML in document order
+/// Extract h2 and h3 headings from HTML in document order.
+/// Handles both bare headings and headings with HTML attributes (e.g. <h2 id="foo">).
 pub fn extract_headings(html: &str) -> Vec<Heading> {
-    let h2_re = regex::Regex::new(r"<h2>(.*?)</h2>").unwrap();
-    let h3_re = regex::Regex::new(r"<h3>(.*?)</h3>").unwrap();
+    let h2_re = regex::Regex::new(r"<h2(?:\s[^>]*)?>(.*?)</h2>").unwrap();
+    let h3_re = regex::Regex::new(r"<h3(?:\s[^>]*)?>(.*?)</h3>").unwrap();
     let mut headings: Vec<(usize, u8, String)> = Vec::new();
 
     for cap in h2_re.captures_iter(html) {
-        let pos = html.find(&cap[0]).unwrap_or(0);
+        let pos = cap.get(0).map(|m| m.start()).unwrap_or(0);
         headings.push((pos, 2, cap[1].to_string()));
     }
     for cap in h3_re.captures_iter(html) {
-        let pos = html.find(&cap[0]).unwrap_or(0);
+        let pos = cap.get(0).map(|m| m.start()).unwrap_or(0);
         headings.push((pos, 3, cap[1].to_string()));
     }
     headings.sort_by_key(|(pos, _, _)| *pos);
@@ -225,5 +226,17 @@ mod tests {
         let html = r#"<h2>주요 유형</h2>"#;
         let headings = extract_headings(html);
         assert_eq!(headings[0].id, "주요-유형");
+    }
+
+    #[test]
+    fn test_extract_headings_with_attributes() {
+        // Headings with id attributes (as produced by pulldown-cmark after Task 3)
+        let html = r#"<h2 id="개요">개요</h2><p>text</p><h3 id="상세">상세</h3>"#;
+        let headings = extract_headings(html);
+        assert_eq!(headings.len(), 2);
+        assert_eq!(headings[0].text, "개요");
+        assert_eq!(headings[0].level, 2);
+        assert_eq!(headings[1].text, "상세");
+        assert_eq!(headings[1].level, 3);
     }
 }
